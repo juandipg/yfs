@@ -44,7 +44,7 @@ main(int argc, char **argv)
     int inodes_size;
     struct dir_entry root[3];
     
-    struct dir_entry a[4];
+    struct dir_entry a[410];
     
     struct dir_entry b[3];
 
@@ -85,6 +85,11 @@ main(int argc, char **argv)
     inodes[10].type = INODE_DIRECTORY;
     inodes[10].size = 4*sizeof(struct dir_entry);
     inodes[10].direct[0] = 10;
+    
+    int i;
+    for (i = 0; i < 13; i++) {
+        inodes[10].direct[i] = 
+    }
     
     // "b" inode
     inodes[15].type = INODE_DIRECTORY;
@@ -142,10 +147,16 @@ main(int argc, char **argv)
     a[1].inum = ROOTINODE;
     a[1].name[0] = '.';
     a[1].name[1] = '.';
-    a[2].inum = 8;
-    a[2].name[0] = 'c';
-    a[3].inum = 15;
-    a[3].name[0] = 'b';
+    
+    int i;
+    for (i=0; i < 409; i++) {
+        a[i].inum = 3;
+        a[i].name[0] = 't';
+    }
+    
+    //the last entry in the array
+    a[409].inum = 15;
+    a[409].name[0] = 'b';
     
     if (write(disk, a, sizeof(a)) != sizeof(a)) {
 	perror("write a");

@@ -7,11 +7,18 @@
 freeInode *firstFreeInode = NULL;
 int freeInodeCount = 0;
 
+//void *globalBlock;
+
+void 
+init() {
+//    globalBlock = malloc(BLOCKSIZE);
+    buildFreeInodeList();
+}
+
 bool
 isEqual(char *path, char dirEntryName[]) {
     int i = 0;
     while (i < DIRNAMELEN) {
-        TracePrintf(1, "comparing %c to %c\n", path[i], dirEntryName[i]);
         if ((path[i] == '/' || path[i] == '\0') && dirEntryName[i] == '\0') {
             return true;
         }
@@ -23,6 +30,38 @@ isEqual(char *path, char dirEntryName[]) {
     return true;
 }
 
+void *
+getBlock(int blockNumber) {
+    void *block = malloc(BLOCKSIZE);
+    ReadSector(blockNumber, block);
+    return block;
+}
+
+void *
+getBlockForInode(int inodeNumber) {
+    int blockNumber = (inodeNumber / INODESPERBLOCK) + 1;
+    return getBlock(blockNumber);
+}
+
+/*
+ * Expects: inode, n
+ * Results: mallocs that block into memory
+ */
+void *
+getNthBlock(struct inode *inode, int n) {
+    if ((n*BLOCKSIZE > inode->size)
+            || (n > NUM_DIRECT + BLOCKSIZE / (int)sizeof(int))) {
+        TracePrintf(1, "Error getting %d th block\n", n); 
+        return NULL;
+    }
+    if (n < NUM_DIRECT) {
+        return getBlock(inode->direct[n]);
+    } 
+    //search the direct blocks
+    int *indirectBlock = getBlock(inode->indirect);
+    return getBlock(indirectBlock[n - NUM_DIRECT]);
+}
+
 int
 getInodeNumberForPath (char *path, int inodeStartNumber) {
     //get the inode number for the first file in path 
@@ -30,52 +69,41 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
     int nextInodeNumber = 0;
     
     //Get inode corresponding to inodeStartNumber
-    int blockNumber = (inodeStartNumber / INODESPERBLOCK) + 1;
-    void *block = malloc(BLOCKSIZE);
-    ReadSector(blockNumber, block);
-    TracePrintf(1, "Read sector: %d\n", blockNumber);
+    void *block = getBlockForInode(inodeStartNumber);
     
-    struct inode *inode = getInode(block, blockNumber, inodeStartNumber);
-    TracePrintf(1, "Got inode of type: %d\n", inode->type);
+    struct inode *inode = getInode(block, inodeStartNumber);
     
     if (inode->type == INODE_DIRECTORY) {
-        TracePrintf(1, "inode directory\n");
-        int dirBlockNum = inode->direct[0];
-        void *dirBlock = malloc(BLOCKSIZE);
-        ReadSector(dirBlockNum, dirBlock);
-        
-        TracePrintf(1, "read sector for inode. Sector number: %d\n", dirBlockNum);
-        
+        int i = 0;
+        void *currentBlock = getNthBlock(inode, i);
         int totalSize = sizeof(struct dir_entry);
-        struct dir_entry *currentEntry = (struct dir_entry *)dirBlock;
-        while (totalSize <= inode->size) {
-            //check the currentEntry fileName to see if it matches
-            TracePrintf(1, "checking to see if names are equal\n");
-            TracePrintf(1, "current entry's inode num = %d\n", currentEntry->inum);
-            if (isEqual(path, currentEntry->name)) {
-                
-                nextInodeNumber = currentEntry->inum;
-                TracePrintf(1, "Just set next inode number to: %d\n", nextInodeNumber);
-                break;
+        while (currentBlock != NULL) {
+            struct dir_entry *currentEntry = (struct dir_entry *)currentBlock;
+            while (totalSize <= inode->size) {
+                //check the currentEntry fileName to see if it matches            
+                if (isEqual(path, currentEntry->name)) {
+                    nextInodeNumber = currentEntry->inum;
+                    break;
+                }
+
+                //increment current entry
+                currentEntry = (struct dir_entry *)((char *)currentEntry + sizeof(struct dir_entry));
+                totalSize += sizeof(struct dir_entry);
             }
-            
-            //increment current entry
-            currentEntry = (struct dir_entry *)((char *)currentEntry + sizeof(struct dir_entry));
-            totalSize += sizeof(struct dir_entry);
+            free(currentBlock);
+            currentBlock = getNthBlock(inode, ++i);
         }
     }
     if (inode->type == INODE_REGULAR) {
         return ERROR;
     }
     if (inode->type == INODE_SYMLINK) {
-        TracePrintf(1, "Symlinks not implemented yet!");
         return ERROR;
     }
-    
+    free(block);
     char *nextPath = path;
     while (nextPath[0] != '/') {
         // base case
-        TracePrintf(1, "path char: %c\n", nextPath[0]);
         if (nextPath[0] == '\0') {
             return nextInodeNumber;
         }
@@ -97,13 +125,11 @@ freeUpInode(int inodeNum) {
     
     // TODO: get inode from cache or disk ----
     // get Block where this inode is contained
-    int blockNum = (inodeNum / INODESPERBLOCK) + 1;
-    void *block = malloc(BLOCKSIZE);
-    ReadSector(blockNum, block);
+    void *block = getBlockForInode(inodeNum);
     // end TODO ------------------------------
     
     // get address of this inode 
-    struct inode *inode = getInode(block, blockNum, inodeNum);
+    struct inode *inode = getInode(block, inodeNum);
     
     TracePrintf(1, "freeing up inode %d, with type %d\n", inodeNum, inode->type);
     // modify the type of inode to free
@@ -127,16 +153,16 @@ addFreeInodeToList(int inodeNum) {
 }
 
 struct inode*
-getInode(void *blockAddr, int blockNum, int inodeNum) {
+getInode(void *blockAddr,  int inodeNum) {
+    int blockNum = (inodeNum / INODESPERBLOCK) + 1;
     return (blockAddr + (inodeNum - (blockNum - 1) * INODESPERBLOCK) * INODESIZE);
 }
 
 void
 buildFreeInodeList() {
     
-    void *block = malloc(BLOCKSIZE);
     int blockNum = 1;
-    ReadSector(1, block);
+    void *block = getBlock(blockNum);
     
     struct fs_header header = *((struct fs_header*) block);
     
@@ -148,13 +174,14 @@ buildFreeInodeList() {
     while (inodeNum < header.num_inodes) {
         // for each inode, if it's free, add it to the free list
         for (; inodeNum < INODESPERBLOCK * blockNum; inodeNum++) {
-            struct inode *inode = getInode(block, blockNum, inodeNum);
+            struct inode *inode = getInode(block, inodeNum);
             if (inode->type == INODE_FREE) {
                 addFreeInodeToList(inodeNum);
             }
         }
         blockNum++;
-        ReadSector(blockNum, block);
+        free(block);
+        block = getBlock(blockNum);
     }
     TracePrintf(1, "initialized free inode list with %d free inodes\n", 
         freeInodeCount);
@@ -166,10 +193,11 @@ main(int argc, char **argv)
 {
     (void) argc;
     (void) argv;
-    
-    TracePrintf(1, "I'm running!\n");
-    char *pathName = "/a/b/x.txt";
-    int result = getInodeNumberForPath(pathName + sizeof(char), ROOTINODE);
-    TracePrintf(1, "Resulting inode number = %d\n", result);
+//    init();
+    TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
+//    TracePrintf(1, "I'm running!\n");
+//    char *pathName = "/a/b/x.txt";
+//    int result = getInodeNumberForPath(pathName + sizeof(char), ROOTINODE);
+//    TracePrintf(1, "Resulting inode number = %d\n", result);
     return (0);
 }

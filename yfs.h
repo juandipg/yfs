@@ -7,5 +7,6 @@ struct freeInode {
     freeInode *next;
 };
 
-struct inode* getInode(void *blockAddr, int blockNum, int inodeNum);
+struct inode* getInode(void *blockAddr, int inodeNum);
 void addFreeInodeToList(int inodeNum);
+void buildFreeInodeList();

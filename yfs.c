@@ -7,6 +7,85 @@
 freeInode *firstFreeInode = NULL;
 int freeInodeCount = 0;
 
+bool
+isEqual(char *path, char dirEntryName[]) {
+    int i = 0;
+    while (i < DIRNAMELEN) {
+        TracePrintf(1, "comparing %c to %c\n", path[i], dirEntryName[i]);
+        if ((path[i] == '/' || path[i] == '\0') && dirEntryName[i] == '\0') {
+            return true;
+        }
+        if (path[i] != dirEntryName[i]) {
+            return false;
+        }
+        i++;
+    }
+    return true;
+}
+
+int
+getInodeNumberForPath (char *path, int inodeStartNumber) {
+    //get the inode number for the first file in path 
+    // ex: if path is "/a/b/c.txt" get the indoe # for "a"
+    int nextInodeNumber = 0;
+    
+    //Get inode corresponding to inodeStartNumber
+    int blockNumber = (inodeStartNumber / INODESPERBLOCK) + 1;
+    void *block = malloc(BLOCKSIZE);
+    ReadSector(blockNumber, block);
+    TracePrintf(1, "Read sector: %d\n", blockNumber);
+    
+    struct inode *inode = getInode(block, blockNumber, inodeStartNumber);
+    TracePrintf(1, "Got inode of type: %d\n", inode->type);
+    
+    if (inode->type == INODE_DIRECTORY) {
+        TracePrintf(1, "inode directory\n");
+        int dirBlockNum = inode->direct[0];
+        void *dirBlock = malloc(BLOCKSIZE);
+        ReadSector(dirBlockNum, dirBlock);
+        
+        TracePrintf(1, "read sector for inode. Sector number: %d\n", dirBlockNum);
+        
+        int totalSize = sizeof(struct dir_entry);
+        struct dir_entry *currentEntry = (struct dir_entry *)dirBlock;
+        while (totalSize <= inode->size) {
+            //check the currentEntry fileName to see if it matches
+            TracePrintf(1, "checking to see if names are equal\n");
+            TracePrintf(1, "current entry's inode num = %d\n", currentEntry->inum);
+            if (isEqual(path, currentEntry->name)) {
+                
+                nextInodeNumber = currentEntry->inum;
+                TracePrintf(1, "Just set next inode number to: %d\n", nextInodeNumber);
+                break;
+            }
+            
+            //increment current entry
+            currentEntry = (struct dir_entry *)((char *)currentEntry + sizeof(struct dir_entry));
+            totalSize += sizeof(struct dir_entry);
+        }
+    }
+    if (inode->type == INODE_REGULAR) {
+        return ERROR;
+    }
+    if (inode->type == INODE_SYMLINK) {
+        TracePrintf(1, "Symlinks not implemented yet!");
+        return ERROR;
+    }
+    
+    char *nextPath = path;
+    while (nextPath[0] != '/') {
+        // base case
+        TracePrintf(1, "path char: %c\n", nextPath[0]);
+        if (nextPath[0] == '\0') {
+            return nextInodeNumber;
+        }
+        nextPath += sizeof(char);
+    }
+    nextPath += sizeof(char);
+    TracePrintf(1, "About to make recursive call\n");
+    TracePrintf(1, "Next inode number = %d\n", nextInodeNumber);
+    return getInodeNumberForPath(nextPath, nextInodeNumber);
+}
 
 
 /*
@@ -89,7 +168,8 @@ main(int argc, char **argv)
     (void) argv;
     
     TracePrintf(1, "I'm running!\n");
-    
-    buildFreeInodeList();
+    char *pathName = "/a/b/x.txt";
+    int result = getInodeNumberForPath(pathName + sizeof(char), ROOTINODE);
+    TracePrintf(1, "Resulting inode number = %d\n", result);
     return (0);
 }

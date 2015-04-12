@@ -50,11 +50,12 @@ getBlockForInode(int inodeNumber) {
 void *
 getNthBlock(struct inode *inode, int n) {
     if ((n*BLOCKSIZE > inode->size)
-            || (n > NUM_DIRECT + BLOCKSIZE / (int)sizeof(int))) {
-        TracePrintf(1, "Error getting %d th block\n", n); 
+            || (n > NUM_DIRECT + BLOCKSIZE / (int)sizeof(int))) 
+    {
         return NULL;
     }
     if (n < NUM_DIRECT) {
+        TracePrintf(1, "blockNumber = %d\n", inode->direct[n]);
         return getBlock(inode->direct[n]);
     } 
     //search the direct blocks
@@ -72,28 +73,36 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
     void *block = getBlockForInode(inodeStartNumber);
     
     struct inode *inode = getInode(block, inodeStartNumber);
-    
+    TracePrintf(1, "inode start number %d\n", inodeStartNumber);
     if (inode->type == INODE_DIRECTORY) {
         int i = 0;
         void *currentBlock = getNthBlock(inode, i);
+        TracePrintf(1, "got %dth block\n", i);
         int totalSize = sizeof(struct dir_entry);
         while (currentBlock != NULL) {
             struct dir_entry *currentEntry = (struct dir_entry *)currentBlock;
+            TracePrintf(1, "1\n");
             while (totalSize <= inode->size) {
-                //check the currentEntry fileName to see if it matches            
+                TracePrintf(1, "2\n");
+                //check the currentEntry fileName to see if it matches        
+                TracePrintf(1, "currentEntry->name addr %p\n", &currentEntry->name);
                 if (isEqual(path, currentEntry->name)) {
                     nextInodeNumber = currentEntry->inum;
+                    TracePrintf(1, "3\n");
                     break;
                 }
-
+                TracePrintf(1, "4\n");
                 //increment current entry
                 currentEntry = (struct dir_entry *)((char *)currentEntry + sizeof(struct dir_entry));
                 totalSize += sizeof(struct dir_entry);
             }
+            TracePrintf(1, "5\n");
             free(currentBlock);
             currentBlock = getNthBlock(inode, ++i);
+            TracePrintf(1, "6\n");
         }
     }
+    TracePrintf(1, "about to check for type regular\n");
     if (inode->type == INODE_REGULAR) {
         return ERROR;
     }
@@ -195,9 +204,9 @@ main(int argc, char **argv)
     (void) argv;
 //    init();
     TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
-//    TracePrintf(1, "I'm running!\n");
-//    char *pathName = "/a/b/x.txt";
-//    int result = getInodeNumberForPath(pathName + sizeof(char), ROOTINODE);
-//    TracePrintf(1, "Resulting inode number = %d\n", result);
+    TracePrintf(1, "I'm running!\n");
+    char *pathName = "/a/b/x.txt";
+    int result = getInodeNumberForPath(pathName + sizeof(char), ROOTINODE);
+    TracePrintf(1, "Resulting inode number = %d\n", result);
     return (0);
 }

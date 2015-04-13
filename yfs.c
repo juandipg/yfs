@@ -55,7 +55,6 @@ getNthBlock(struct inode *inode, int n) {
         return NULL;
     }
     if (n < NUM_DIRECT) {
-        TracePrintf(1, "blockNumber = %d\n", inode->direct[n]);
         return getBlock(inode->direct[n]);
     } 
     //search the direct blocks
@@ -73,36 +72,26 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
     void *block = getBlockForInode(inodeStartNumber);
     
     struct inode *inode = getInode(block, inodeStartNumber);
-    TracePrintf(1, "inode start number %d\n", inodeStartNumber);
     if (inode->type == INODE_DIRECTORY) {
         int i = 0;
         void *currentBlock = getNthBlock(inode, i);
-        TracePrintf(1, "got %dth block\n", i);
         int totalSize = sizeof(struct dir_entry);
         while (currentBlock != NULL) {
             struct dir_entry *currentEntry = (struct dir_entry *)currentBlock;
-            TracePrintf(1, "1\n");
-            while (totalSize <= inode->size) {
-                TracePrintf(1, "2\n");
+            while (totalSize <= inode->size && ((char *)currentEntry < ((char *)currentBlock + BLOCKSIZE))) {
                 //check the currentEntry fileName to see if it matches        
-                TracePrintf(1, "currentEntry->name addr %p\n", &currentEntry->name);
                 if (isEqual(path, currentEntry->name)) {
                     nextInodeNumber = currentEntry->inum;
-                    TracePrintf(1, "3\n");
                     break;
                 }
-                TracePrintf(1, "4\n");
                 //increment current entry
                 currentEntry = (struct dir_entry *)((char *)currentEntry + sizeof(struct dir_entry));
                 totalSize += sizeof(struct dir_entry);
             }
-            TracePrintf(1, "5\n");
             free(currentBlock);
             currentBlock = getNthBlock(inode, ++i);
-            TracePrintf(1, "6\n");
         }
     }
-    TracePrintf(1, "about to check for type regular\n");
     if (inode->type == INODE_REGULAR) {
         return ERROR;
     }
@@ -120,7 +109,6 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
     }
     nextPath += sizeof(char);
     TracePrintf(1, "About to make recursive call\n");
-    TracePrintf(1, "Next inode number = %d\n", nextInodeNumber);
     return getInodeNumberForPath(nextPath, nextInodeNumber);
 }
 

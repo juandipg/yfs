@@ -87,29 +87,23 @@ main(int argc, char **argv)
     inodes[10].direct[0] = 10;
     
     for (i = 1; i < NUM_DIRECT; i++) {
-        printf("100 + %d = %d\n", i, 100 + i);
         inodes[10].direct[i] = 100 + i;
     }
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
-    printf("indirect block will be at 100 + %d = %d\n", i, 100 + i);
     
     inodes[10].indirect = 100 + i;
     
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
     
     // "b" inode
     inodes[15].type = INODE_DIRECTORY;
     inodes[15].size = 3*sizeof(struct dir_entry);
     inodes[15].direct[0] = 12;
     
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
     
     // "x.txt" inode
     inodes[20].type = INODE_REGULAR;
     inodes[20].size = sizeof(struct dir_entry);
     inodes[20].direct[0] = 20;
     
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
 
     if (write(disk, inodes, inodes_size) != inodes_size) {
 	perror("write inodes");
@@ -117,7 +111,6 @@ main(int argc, char **argv)
 	exit(1);
     }
 
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
     
     memset((void *)root, '\0', sizeof(root));
     root[0].inum = ROOTINODE;
@@ -134,7 +127,6 @@ main(int argc, char **argv)
 	exit(1);
     }
    
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
 
     /*
      *  Seek to the last block of the DISK and write it full of zeros.
@@ -153,7 +145,6 @@ main(int argc, char **argv)
 	exit(1);
     }
 
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
     
     memset((void *)a, '\0', sizeof(a));
     a[0].inum = 10;
@@ -168,7 +159,6 @@ main(int argc, char **argv)
         a[i].name[0] = 't';
     }
     
-    printf("direct block 11 is %d\n", inodes[10].direct[11]);
     
     //the last entry in the array
     a[409].inum = 15;
@@ -177,7 +167,6 @@ main(int argc, char **argv)
 
     // for each direct block, write that fraction of "a"
     for (i = 0; i < NUM_DIRECT; i++) {
-        printf("writing to %dth direct block %d\n", i, inodes[10].direct[i]);
         lseek(disk, BLOCKSIZE * inodes[10].direct[i], SEEK_SET);
         if (write(disk, (char *) a + (i * BLOCKSIZE), BLOCKSIZE) != BLOCKSIZE) {
             perror("write direct fractions of a");
@@ -191,7 +180,6 @@ main(int argc, char **argv)
     for (i = 0; i < 14; i++) {
         indirect_blocks[i] = 200 + i;
     }
-    printf("writing indirect block to %d\n", inodes[10].indirect);
     lseek(disk, BLOCKSIZE * inodes[10].indirect, SEEK_SET);
     if (write(disk, indirect_blocks, BLOCKSIZE) != BLOCKSIZE) {
         perror("write indirect block array for a");
@@ -201,7 +189,6 @@ main(int argc, char **argv)
     
     // for each indirect block, write that fraction of "a"
     for (i = 0; i < 14; i++) {
-        printf("writing to indirect block %d\n", indirect_blocks[i]);
         lseek(disk, BLOCKSIZE * indirect_blocks[i], SEEK_SET);
         if (write(disk, (char *) a + (14 + i) * BLOCKSIZE, BLOCKSIZE) != BLOCKSIZE) {
             perror("write indirect fractions of a");

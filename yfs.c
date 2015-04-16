@@ -6,12 +6,11 @@
 
 freeInode *firstFreeInode = NULL;
 int freeInodeCount = 0;
+int currentInode = ROOTINODE;
 
-//void *globalBlock;
 
 void 
 init() {
-//    globalBlock = malloc(BLOCKSIZE);
     buildFreeInodeList();
 }
 
@@ -28,6 +27,11 @@ isEqual(char *path, char dirEntryName[]) {
         i++;
     }
     return true;
+}
+
+void
+saveBlock(int blockNumber, void *block) {
+    WriteSector(blockNumber, block);
 }
 
 void *
@@ -62,6 +66,13 @@ getNthBlock(struct inode *inode, int n) {
     return getBlock(indirectBlock[n - NUM_DIRECT]);
 }
 
+/**
+ * 
+ * @param path the file path to get the inode number for
+ * @param inodeStartNumber the inode to start looking for the next part
+ *       of the file path in
+ * @return the inode number of the path, or 0 if it's an invalid path
+ */
 int
 getInodeNumberForPath (char *path, int inodeStartNumber) {
     //get the inode number for the first file in path 
@@ -76,12 +87,14 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
         int i = 0;
         void *currentBlock = getNthBlock(inode, i);
         int totalSize = sizeof(struct dir_entry);
-        while (currentBlock != NULL) {
+        bool isFound = false;
+        while (currentBlock != NULL && !isFound) {
             struct dir_entry *currentEntry = (struct dir_entry *)currentBlock;
             while (totalSize <= inode->size && ((char *)currentEntry < ((char *)currentBlock + BLOCKSIZE))) {
                 //check the currentEntry fileName to see if it matches        
                 if (isEqual(path, currentEntry->name)) {
                     nextInodeNumber = currentEntry->inum;
+                    isFound = true;
                     break;
                 }
                 //increment current entry
@@ -100,6 +113,10 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
     }
     free(block);
     char *nextPath = path;
+    if (nextInodeNumber == 0) {
+        // Return error
+        return 0;
+    }
     while (nextPath[0] != '/') {
         // base case
         if (nextPath[0] == '\0') {
@@ -119,11 +136,8 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
 void
 freeUpInode(int inodeNum) {
     // number of inodes per block
-    
-    // TODO: get inode from cache or disk ----
-    // get Block where this inode is contained
+
     void *block = getBlockForInode(inodeNum);
-    // end TODO ------------------------------
     
     // get address of this inode 
     struct inode *inode = getInode(block, inodeNum);
@@ -138,6 +152,16 @@ freeUpInode(int inodeNum) {
     
     // TODO mark inode as dirty
     // TODO mark block as dirty
+}
+
+int
+getNextFreeInodeNum() {
+    if (firstFreeInode == NULL) {
+        return 0;
+    }
+    int inodeNum = firstFreeInode->inodeNumber;
+    firstFreeInode = firstFreeInode->next;
+    return inodeNum;
 }
 
 void
@@ -185,16 +209,109 @@ buildFreeInodeList() {
     free(block);
 }
 
+void
+clearFile(struct inode *inode) {
+    //TODO iterate through blocks and add them to free block list
+    
+    inode->size = 0;
+}
+
+
+/*
+ * Returns offset within blocknum block
+ */
+int
+getDirectoryEntry(char *pathname, int inodeStart, int *blockNum) {
+    (void)pathname;
+    (void)inodeStart;
+    (void)blockNum;
+    return NULL;
+}
+
+int
+yfsOpen(char *pathname, int currentInode) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    return getInodeNumberForPath(pathname, currentInode);
+}
+
+int
+yfsCreate(char *pathname, int currentInode) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
+    // Truncate the pathname to NOT include the name of the file to create
+    int lastSlashIndex = 0;
+    int i = 0;
+    while ((pathname[i] != '\0') && (i < MAXPATHNAMELEN)) {
+        if (pathname[i] == '/') {
+            lastSlashIndex = i;
+        }
+    }
+    
+    char path[lastSlashIndex + 1];
+    for (i = 0; i < lastSlashIndex; i++) {
+        path[i] = pathname[i];
+    }
+    path[i] = '\0';
+    
+    char *filename = pathname + (sizeof(char) * (lastSlashIndex + 1));
+    
+    // Get the inode of the directory the file should be created in
+    int dirInodeNum = getInodeNumberForPath(&path, currentInode);
+    if (dirInodeNum == 0) {
+        return 0;
+    }
+    
+    // Search all directory entries of that inode for the file name to create
+    int blockNum;
+    int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum);
+    void *block = getBlock(blockNum);
+    
+    dir_entry *dir_entry = (dir_entry *) (block + (char *)offset);
+    
+    // If the file exists, get the inode, set its size to zero, and return
+    // that inode number to user
+    int inodeNum = dir_entry->inum;
+    if (inodeNum != 0) {
+        int inodeNum = dir_entry->inum;
+        void *block = getBlockForInode(inodeNum);
+        struct inode *inode = getInode(block, inodeNum);
+        clearFile(inode);
+        
+        // TODO have method to calculate block number?
+        saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
+        free(block);
+        return inodeNum;
+    }
+    
+    // If the file does not exist, find the first free directory entry, get
+    // a new inode number from free list, get that inode, change the info on 
+    // that inode and directory entry (name, type), then return the inode number
+    inodeNum = getNextFreeInodeNum();
+    void *block = getBlockForInode(inodeNum);
+    struct inode *inode = getInode(block, inodeNum);
+    inode->type = INODE_REGULAR;
+    inode->size = 0;
+    saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
+    free(block);
+    return inodeNum;
+}
+
 int
 main(int argc, char **argv)
 {
     (void) argc;
     (void) argv;
-//    init();
+    init();
     TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
     TracePrintf(1, "I'm running!\n");
     char *pathName = "/a/b/x.txt";
-    int result = getInodeNumberForPath(pathName + sizeof(char), ROOTINODE);
+    int result = yfsOpen(pathName, ROOTINODE);
     TracePrintf(1, "Resulting inode number = %d\n", result);
     return (0);
 }

@@ -16,5 +16,5 @@ struct freeBlock {
 
 struct inode* getInode(void *blockAddr, int inodeNum);
 void addFreeInodeToList(int inodeNum);
-void buildFreeInodeList();
+void buildFreeInodeAndBlockLists();
 int getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool createIfNeeded);

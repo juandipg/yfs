@@ -9,12 +9,13 @@ freeInode *firstFreeInode = NULL;
 freeBlock *firstFreeBlock = NULL;
 
 int freeInodeCount = 0;
+int freeBlockCount = 0;
 int currentInode = ROOTINODE;
 
 
 void 
 init() {
-    buildFreeInodeList();
+    buildFreeInodeAndBlockLists();
 }
 
 bool
@@ -168,6 +169,15 @@ addFreeInodeToList(int inodeNum) {
     freeInodeCount++;
 }
 
+void
+addFreeBlockToList(int blockNum) {
+    freeBlock *newHead = malloc(sizeof(freeBlock));
+    newHead->blockNumber = blockNum;
+    newHead->next = firstFreeBlock;
+    firstFreeBlock = newHead;
+    freeBlockCount++;
+}
+
 struct inode*
 getInode(void *blockAddr,  int inodeNum) {
     int blockNum = (inodeNum / INODESPERBLOCK) + 1;
@@ -175,7 +185,7 @@ getInode(void *blockAddr,  int inodeNum) {
 }
 
 void
-buildFreeInodeList() {
+buildFreeInodeAndBlockLists() {
     
     int blockNum = 1;
     void *block = getBlock(blockNum);
@@ -185,6 +195,13 @@ buildFreeInodeList() {
     TracePrintf(1, "num_blocks: %d, num_inodes: %d\n", header.num_blocks,
         header.num_inodes);
     
+    // create array indexed by block number
+    bool takenBlocks[header.num_blocks];
+    // initialize each item to false
+    memset(takenBlocks, false, header.num_blocks * sizeof(bool));
+    // sector 0 is taken
+    takenBlocks[0] = true;
+    
     // for each block that contains inodes
     int inodeNum = ROOTINODE;
     while (inodeNum < header.num_inodes) {
@@ -193,6 +210,13 @@ buildFreeInodeList() {
             struct inode *inode = getInode(block, inodeNum);
             if (inode->type == INODE_FREE) {
                 addFreeInodeToList(inodeNum);
+            } else {
+                // keep track of all these blocks as taken
+                int i = 0;
+                int blockNum;
+                while((blockNum = getNthBlock(inode, i++)) != 0) {
+                    takenBlocks[blockNum] = true;
+                }
             }
         }
         blockNum++;
@@ -201,14 +225,19 @@ buildFreeInodeList() {
     }
     TracePrintf(1, "initialized free inode list with %d free inodes\n", 
         freeInodeCount);
-    free(block);
-}
-
-void
-buildFreeBlockList() {
-    // For each inode, if it is not free
-        // 
     
+    // for each element in the block array
+    int i;
+    for (i = 0; i < header.num_blocks; i++) {
+        if (!takenBlocks[i]) {
+            // add block to list
+            addFreeBlockToList(i);
+        }
+    }
+    TracePrintf(1, "initialized free block list with %d free blocks\n", 
+        freeBlockCount);
+    
+    free(block);
 }
 
 void

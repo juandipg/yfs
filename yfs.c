@@ -51,21 +51,22 @@ getBlockForInode(int inodeNumber) {
  * Expects: inode, n
  * Results: mallocs that block into memory
  */
-void *
+int
 getNthBlock(struct inode *inode, int n) {
     if ((n*BLOCKSIZE > inode->size)
             || (n > NUM_DIRECT + BLOCKSIZE / (int)sizeof(int))) 
     {
-        return NULL;
+        return 0;
     }
     if (n < NUM_DIRECT) {
-        return getBlock(inode->direct[n]);
+        return inode->direct[n];
     } 
     //search the direct blocks
     int *indirectBlock = getBlock(inode->indirect);
-    return getBlock(indirectBlock[n - NUM_DIRECT]);
+    int blockNum = indirectBlock[n - NUM_DIRECT];
+    free(indirectBlock);
+    return blockNum;
 }
-
 /**
  * 
  * @param path the file path to get the inode number for
@@ -74,44 +75,34 @@ getNthBlock(struct inode *inode, int n) {
  * @return the inode number of the path, or 0 if it's an invalid path
  */
 int
-getInodeNumberForPath (char *path, int inodeStartNumber) {
+getInodeNumberForPath(char *path, int inodeStartNumber)
+{
     //get the inode number for the first file in path 
     // ex: if path is "/a/b/c.txt" get the indoe # for "a"
     int nextInodeNumber = 0;
-    
+
     //Get inode corresponding to inodeStartNumber
     void *block = getBlockForInode(inodeStartNumber);
-    
     struct inode *inode = getInode(block, inodeStartNumber);
     if (inode->type == INODE_DIRECTORY) {
-        int i = 0;
-        void *currentBlock = getNthBlock(inode, i);
-        int totalSize = sizeof(struct dir_entry);
-        bool isFound = false;
-        while (currentBlock != NULL && !isFound) {
-            struct dir_entry *currentEntry = (struct dir_entry *)currentBlock;
-            while (totalSize <= inode->size && ((char *)currentEntry < ((char *)currentBlock + BLOCKSIZE))) {
-                //check the currentEntry fileName to see if it matches        
-                if (isEqual(path, currentEntry->name)) {
-                    nextInodeNumber = currentEntry->inum;
-                    isFound = true;
-                    break;
-                }
-                //increment current entry
-                currentEntry = (struct dir_entry *)((char *)currentEntry + sizeof(struct dir_entry));
-                totalSize += sizeof(struct dir_entry);
-            }
-            free(currentBlock);
-            currentBlock = getNthBlock(inode, ++i);
+        // go get the directory entry in this directory
+        // that has that name
+        int blockNum;
+        int offset = getDirectoryEntry(path, inodeStartNumber, &blockNum, false);
+        if (offset != -1) {
+            free(block);
+            block = getBlock(blockNum);
+            struct dir_entry * dir_entry = (struct dir_entry *) ((char *) block + offset);
+            nextInodeNumber = dir_entry->inum;
+            free(block);
         }
-    }
-    if (inode->type == INODE_REGULAR) {
+    } else if (inode->type == INODE_REGULAR) {
+        free(block);
+        return ERROR;
+    } else if (inode->type == INODE_SYMLINK) {
+        free(block);
         return ERROR;
     }
-    if (inode->type == INODE_SYMLINK) {
-        return ERROR;
-    }
-    free(block);
     char *nextPath = path;
     if (nextInodeNumber == 0) {
         // Return error
@@ -122,9 +113,9 @@ getInodeNumberForPath (char *path, int inodeStartNumber) {
         if (nextPath[0] == '\0') {
             return nextInodeNumber;
         }
-        nextPath += sizeof(char);
+        nextPath += sizeof (char);
     }
-    nextPath += sizeof(char);
+    nextPath += sizeof (char);
     TracePrintf(1, "About to make recursive call\n");
     return getInodeNumberForPath(nextPath, nextInodeNumber);
 }
@@ -221,11 +212,69 @@ clearFile(struct inode *inode) {
  * Returns offset within blocknum block
  */
 int
-getDirectoryEntry(char *pathname, int inodeStart, int *blockNum) {
-    (void)pathname;
-    (void)inodeStart;
-    (void)blockNum;
-    return NULL;
+getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool createIfNeeded) {
+    TracePrintf(1, "pathname = %s\n", pathname);
+    int freeEntryOffset = -1;
+    int freeEntryBlockNum = 0;
+    void * currentBlock;
+    struct dir_entry *currentEntry;
+    void *block = getBlockForInode(inodeStartNumber);
+    struct inode *inode = getInode(block, inodeStartNumber);
+    int i = 0;
+    int blockNum = getNthBlock(inode, i);
+    int totalSize = sizeof (struct dir_entry);
+    bool isFound = false;
+    while (blockNum != 0 && !isFound) {
+        currentBlock = getBlock(blockNum);
+        currentEntry = (struct dir_entry *) currentBlock;
+        while (totalSize <= inode->size 
+                && ((char *) currentEntry < ((char *) currentBlock + BLOCKSIZE))) 
+        {
+            if (freeEntryOffset == -1 && currentEntry->inum == 0) {
+                freeEntryBlockNum = blockNum;
+                freeEntryOffset = (int)((char *)currentEntry - (char *)currentBlock);
+            }
+            //check the currentEntry fileName to see if it matches  
+            if (isEqual(pathname, currentEntry->name)) {
+                isFound = true;
+                break;
+            }
+            //increment current entry
+            currentEntry = (struct dir_entry *) ((char *) currentEntry + sizeof (struct dir_entry));
+            totalSize += sizeof (struct dir_entry);
+        }
+        free(currentBlock);
+        if (isFound) {
+            break;
+        }
+        blockNum = getNthBlock(inode, ++i);
+    }
+    free(block);
+    *blockNumPtr = blockNum;
+
+    if (isFound) {
+        int offset = (int)((char *)currentEntry - (char *)currentBlock);
+        return offset;
+    } else if (createIfNeeded) {
+        if (freeEntryOffset == -1) {
+            // we need to create a new dir_entry at the end
+            // TODO: re-set blockNumPtr
+            inode->size += sizeof(struct dir_entry);
+            if (blockNum == 0) {
+                // TODO: call with createIfNeeded so a new block gets allocated
+//                blockNum = getNthBlock(inode, i);
+            } else {
+                int offset = (int)((char *)currentEntry - (char *)currentBlock);
+                return offset;
+            }
+        } else {
+            // we can return freeEntry
+            *blockNumPtr = freeEntryBlockNum;
+            return freeEntryOffset;
+        }
+    }
+
+    return -1;
 }
 
 int
@@ -262,17 +311,17 @@ yfsCreate(char *pathname, int currentInode) {
     char *filename = pathname + (sizeof(char) * (lastSlashIndex + 1));
     
     // Get the inode of the directory the file should be created in
-    int dirInodeNum = getInodeNumberForPath(&path, currentInode);
+    int dirInodeNum = getInodeNumberForPath(path, currentInode);
     if (dirInodeNum == 0) {
         return 0;
     }
     
     // Search all directory entries of that inode for the file name to create
     int blockNum;
-    int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum);
+    int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
     void *block = getBlock(blockNum);
     
-    dir_entry *dir_entry = (dir_entry *) (block + (char *)offset);
+    struct dir_entry *dir_entry = (struct dir_entry *) ((char *)block + offset);
     
     // If the file exists, get the inode, set its size to zero, and return
     // that inode number to user
@@ -293,7 +342,7 @@ yfsCreate(char *pathname, int currentInode) {
     // a new inode number from free list, get that inode, change the info on 
     // that inode and directory entry (name, type), then return the inode number
     inodeNum = getNextFreeInodeNum();
-    void *block = getBlockForInode(inodeNum);
+    block = getBlockForInode(inodeNum);
     struct inode *inode = getInode(block, inodeNum);
     inode->type = INODE_REGULAR;
     inode->size = 0;
@@ -310,8 +359,8 @@ main(int argc, char **argv)
     init();
     TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
     TracePrintf(1, "I'm running!\n");
-    char *pathName = "/a/b/x.txt";
-    int result = yfsOpen(pathName, ROOTINODE);
+    char *pathName = "a/b/x.txt";
+    int result = getInodeNumberForPath(pathName, ROOTINODE);
     TracePrintf(1, "Resulting inode number = %d\n", result);
     return (0);
 }

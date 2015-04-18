@@ -1,4 +1,5 @@
 #define INODESPERBLOCK (BLOCKSIZE / INODESIZE)
+#define DIRENTRIESPERBLOCK (BLOCKSIZE / sizeof(struct dir_entry))
 
 typedef struct freeInode freeInode;
 

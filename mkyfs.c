@@ -46,7 +46,7 @@ main(int argc, char **argv)
     
     struct dir_entry a[410];
     
-    struct dir_entry b[3];
+    struct dir_entry b[4];
 
     if (argc > 1) {
 	if (sscanf(argv[1], "%d", &num_inodes) != 1) {
@@ -95,7 +95,7 @@ main(int argc, char **argv)
     
     // "b" inode
     inodes[15].type = INODE_DIRECTORY;
-    inodes[15].size = 3*sizeof(struct dir_entry);
+    inodes[15].size = 4*sizeof(struct dir_entry);
     inodes[15].direct[0] = 12;
     
     
@@ -204,12 +204,14 @@ main(int argc, char **argv)
     b[1].inum = 10;
     b[1].name[0] = '.';
     b[1].name[1] = '.';
-    b[2].inum = 20;
-    b[2].name[0] = 'x';
-    b[2].name[1] = '.';
-    b[2].name[2] = 't';
-    b[2].name[3] = 'x';
-    b[2].name[4] = 't';
+    b[2].inum = 0;
+    b[2].name[0] = '!';
+    b[3].inum = 20;
+    b[3].name[0] = 'x';
+    b[3].name[1] = '.';
+    b[3].name[2] = 't';
+    b[3].name[3] = 'x';
+    b[3].name[4] = 't';
     
     if (write(disk, b, sizeof(b)) != sizeof(b)) {
 	perror("write b");

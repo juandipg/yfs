@@ -2,6 +2,7 @@
 #include <comp421/filesystem.h>
 #include <comp421/yalnix.h>
 #include <stdlib.h>
+#include <string.h>
 #include "yfs.h"
 
 freeInode *firstFreeInode = NULL;
@@ -218,10 +219,14 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
     int freeEntryBlockNum = 0;
     void * currentBlock;
     struct dir_entry *currentEntry;
-    void *block = getBlockForInode(inodeStartNumber);
+    
+    int inodeBlockNumber = (inodeStartNumber / INODESPERBLOCK) + 1;
+    void *block = getBlock(inodeBlockNumber);
+    
     struct inode *inode = getInode(block, inodeStartNumber);
     int i = 0;
     int blockNum = getNthBlock(inode, i);
+    int currBlockNum = 0;
     int totalSize = sizeof (struct dir_entry);
     bool isFound = false;
     while (blockNum != 0 && !isFound) {
@@ -230,11 +235,12 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
         while (totalSize <= inode->size 
                 && ((char *) currentEntry < ((char *) currentBlock + BLOCKSIZE))) 
         {
+            TracePrintf(1, "currentEntry name = %s\n", currentEntry->name);
             if (freeEntryOffset == -1 && currentEntry->inum == 0) {
                 freeEntryBlockNum = blockNum;
                 freeEntryOffset = (int)((char *)currentEntry - (char *)currentBlock);
             }
-            //check the currentEntry fileName to see if it matches  
+            //check the currentEntry fileName to see if it matches 
             if (isEqual(pathname, currentEntry->name)) {
                 isFound = true;
                 break;
@@ -247,31 +253,40 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
         if (isFound) {
             break;
         }
+        currBlockNum = blockNum;
         blockNum = getNthBlock(inode, ++i);
     }
-    free(block);
+    
     *blockNumPtr = blockNum;
 
     if (isFound) {
+        TracePrintf(1, "Found the directory entry!\n");
         int offset = (int)((char *)currentEntry - (char *)currentBlock);
+        free(block);
         return offset;
-    } else if (createIfNeeded) {
-        if (freeEntryOffset == -1) {
-            // we need to create a new dir_entry at the end
-            // TODO: re-set blockNumPtr
-            inode->size += sizeof(struct dir_entry);
-            if (blockNum == 0) {
-                // TODO: call with createIfNeeded so a new block gets allocated
-//                blockNum = getNthBlock(inode, i);
-            } else {
-                int offset = (int)((char *)currentEntry - (char *)currentBlock);
-                return offset;
-            }
-        } else {
-            // we can return freeEntry
+    } 
+    if (createIfNeeded) {
+        if (freeEntryBlockNum != 0) {
+            TracePrintf(1, "Are we here?\n");
             *blockNumPtr = freeEntryBlockNum;
+            free(block);
             return freeEntryOffset;
         }
+        if (DIRENTRIESPERBLOCK % inode->size == 0) {
+            // we need to allocate a new block
+                //TODO
+            TracePrintf(1, "we are here and we shouldn't be! \n");
+            inode->size += sizeof(struct dir_entry);
+            free(block);
+            return -1;
+        } 
+        TracePrintf(1, "We are here and we SHOULD be here\n");
+        inode->size += sizeof(struct dir_entry);
+        saveBlock(inodeBlockNumber, block);
+        *blockNumPtr = currBlockNum;
+        int offset = (int)((char *)currentEntry - (char *)currentBlock);
+        free(block);
+        return offset;
     }
 
     return -1;
@@ -288,18 +303,32 @@ yfsOpen(char *pathname, int currentInode) {
 
 int
 yfsCreate(char *pathname, int currentInode) {
+    // error checking
+    int i;
+    for (i = 0; i < MAXPATHNAMELEN; i++) {
+        if (pathname[i] == '\0') {
+            break;
+        }
+    }
+    if (i == MAXPATHNAMELEN) {
+        return ERROR;
+    }
+    
+    // adjust pathname
     if (pathname[0] == '/') {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
     
+    TracePrintf(1, "first free inode number = %d\n", firstFreeInode->inodeNumber);
     // Truncate the pathname to NOT include the name of the file to create
     int lastSlashIndex = 0;
-    int i = 0;
+    i = 0;
     while ((pathname[i] != '\0') && (i < MAXPATHNAMELEN)) {
         if (pathname[i] == '/') {
             lastSlashIndex = i;
         }
+        i++;
     }
     
     char path[lastSlashIndex + 1];
@@ -309,6 +338,8 @@ yfsCreate(char *pathname, int currentInode) {
     path[i] = '\0';
     
     char *filename = pathname + (sizeof(char) * (lastSlashIndex + 1));
+    TracePrintf(1, "filename: %s\n", filename);
+    TracePrintf(1, "path: %s\n", path);
     
     // Get the inode of the directory the file should be created in
     int dirInodeNum = getInodeNumberForPath(path, currentInode);
@@ -319,6 +350,8 @@ yfsCreate(char *pathname, int currentInode) {
     // Search all directory entries of that inode for the file name to create
     int blockNum;
     int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
+    TracePrintf(1, "result block number: %d\n", blockNum);
+    TracePrintf(1, "result offset: %d\n", offset);
     void *block = getBlock(blockNum);
     
     struct dir_entry *dir_entry = (struct dir_entry *) ((char *)block + offset);
@@ -326,6 +359,7 @@ yfsCreate(char *pathname, int currentInode) {
     // If the file exists, get the inode, set its size to zero, and return
     // that inode number to user
     int inodeNum = dir_entry->inum;
+    TracePrintf(1, "result directory entry for inodeNum: %d\n", inodeNum);
     if (inodeNum != 0) {
         int inodeNum = dir_entry->inum;
         void *block = getBlockForInode(inodeNum);
@@ -341,7 +375,14 @@ yfsCreate(char *pathname, int currentInode) {
     // If the file does not exist, find the first free directory entry, get
     // a new inode number from free list, get that inode, change the info on 
     // that inode and directory entry (name, type), then return the inode number
+    memset(&dir_entry->name, '\0', MAXPATHNAMELEN);
+    for (i = 0; filename[i] != '\0'; i++) {
+        dir_entry->name[i] = filename[i];
+    }
     inodeNum = getNextFreeInodeNum();
+    dir_entry->inum = inodeNum;
+    TracePrintf(1, "set the directory name to: %s\n", dir_entry->name);
+    saveBlock(blockNum, block);
     block = getBlockForInode(inodeNum);
     struct inode *inode = getInode(block, inodeNum);
     inode->type = INODE_REGULAR;
@@ -359,8 +400,8 @@ main(int argc, char **argv)
     init();
     TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
     TracePrintf(1, "I'm running!\n");
-    char *pathName = "a/b/x.txt";
-    int result = getInodeNumberForPath(pathName, ROOTINODE);
+    char *pathName = "a/b/w.txt";
+    int result = yfsCreate(pathName, ROOTINODE);
     TracePrintf(1, "Resulting inode number = %d\n", result);
     return (0);
 }

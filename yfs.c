@@ -497,7 +497,7 @@ yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
 }
 
 int 
-yfsWrite(int inodeNum, void *buf, int size, int pid, int byteOffset) {
+yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
     (void)pid;
     void *inodeBlock = getBlockForInode(inodeNum);
     struct inode *inode = getInode(inodeBlock, inodeNum);
@@ -529,9 +529,7 @@ yfsWrite(int inodeNum, void *buf, int size, int pid, int byteOffset) {
         }
         
         memcpy((char *)currentBlock + blockOffset, buf, bytesToCopy);
-        
-        
-        
+
         buf += bytesToCopy;
         saveBlock(blockNum, currentBlock);
         
@@ -574,12 +572,14 @@ main(int argc, char **argv)
     hello[610] = 'a';
     hello[611] = 'b';
     
-    //char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
+    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
     int writeResult = yfsWrite(20, hello, 612, 0, 0);
     TracePrintf(1, "Bytes written = %d\n", writeResult);
+    int writeResult2 = yfsWrite(20, writeMe, 26, 500, 0);
+    TracePrintf(1, "Bytes written = %d\n", writeResult2);
     
     char *readMe = malloc(612*sizeof(char));
-    int readResult = yfsRead(20, readMe, 612, 0, 0);
+    int readResult = yfsRead(20, readMe, 638, 0, 0);
     TracePrintf(1, "Bytes read = %d\n", readResult);
     TracePrintf(1, "String read = %s\n", readMe);
     return (0);

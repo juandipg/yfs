@@ -44,7 +44,7 @@ main(int argc, char **argv)
     int inodes_size;
     struct dir_entry root[3];
     
-    struct dir_entry a[410];
+    struct dir_entry a[3];
     
     struct dir_entry b[16];
 
@@ -83,15 +83,8 @@ main(int argc, char **argv)
     
     // "a" inode
     inodes[10].type = INODE_DIRECTORY;
-    inodes[10].size = 410 * sizeof(struct dir_entry); 
+    inodes[10].size = 3 * sizeof(struct dir_entry); 
     inodes[10].direct[0] = 10;
-    
-    for (i = 1; i < NUM_DIRECT; i++) {
-        inodes[10].direct[i] = 100 + i;
-    }
-    
-    inodes[10].indirect = 100 + i;
-    
     
     // "b" inode
     inodes[15].type = INODE_DIRECTORY;
@@ -101,8 +94,9 @@ main(int argc, char **argv)
     
     // "x.txt" inode
     inodes[20].type = INODE_REGULAR;
-    inodes[20].size = sizeof(struct dir_entry);
+    inodes[20].size = 35 * sizeof(char);
     inodes[20].direct[0] = 20;
+    //inodes[20].direct[1] = 31;
     
 
     if (write(disk, inodes, inodes_size) != inodes_size) {
@@ -153,45 +147,16 @@ main(int argc, char **argv)
     a[1].name[0] = '.';
     a[1].name[1] = '.';
     
-//    int i;
-    for (i=0; i < 409; i++) {
-        a[i].inum = 3;
-        a[i].name[0] = 't';
-    }
-    
-    
     //the last entry in the array
-    a[409].inum = 15;
-    a[409].name[0] = 'b';
+    a[2].inum = 15;
+    a[2].name[0] = 'b';
     
 
     // for each direct block, write that fraction of "a"
-    for (i = 0; i < NUM_DIRECT; i++) {
+    for (i = 0; i < 1; i++) {
         lseek(disk, BLOCKSIZE * inodes[10].direct[i], SEEK_SET);
         if (write(disk, (char *) a + (i * BLOCKSIZE), BLOCKSIZE) != BLOCKSIZE) {
             perror("write direct fractions of a");
-            unlink(DISK_FILE_NAME);
-            exit(1);
-        }
-    }
-    
-    // write the array of indirect blocks onto the disk
-    int indirect_blocks[14];
-    for (i = 0; i < 14; i++) {
-        indirect_blocks[i] = 200 + i;
-    }
-    lseek(disk, BLOCKSIZE * inodes[10].indirect, SEEK_SET);
-    if (write(disk, indirect_blocks, BLOCKSIZE) != BLOCKSIZE) {
-        perror("write indirect block array for a");
-        unlink(DISK_FILE_NAME);
-        exit(1);
-    }
-    
-    // for each indirect block, write that fraction of "a"
-    for (i = 0; i < 14; i++) {
-        lseek(disk, BLOCKSIZE * indirect_blocks[i], SEEK_SET);
-        if (write(disk, (char *) a + (14 + i) * BLOCKSIZE, BLOCKSIZE) != BLOCKSIZE) {
-            perror("write indirect fractions of a");
             unlink(DISK_FILE_NAME);
             exit(1);
         }
@@ -220,5 +185,32 @@ main(int argc, char **argv)
 	exit(1);
     }
     
+//    char hello[612];
+//    for (i = 0; i < 612; i++) 
+//    {
+//        if (i % 2 == 0) {
+//            hello[i] = '2';
+//        } else {
+//            hello[i] = '1';
+//        }
+//    }
+//    hello[610] = 'a';
+//    hello[611] = 'b';
+    
+    char *str = "hey, this should get written over!";
+    
+//    char *myString = "abcdefghijklmnopqrst";
+    lseek(disk, BLOCKSIZE * 20, SEEK_SET);
+    if (write(disk, str, 35 * sizeof(char)) != 35 * sizeof(char)) {
+	perror("write hello");
+	unlink(DISK_FILE_NAME);
+	exit(1);
+    }
+//    lseek(disk, BLOCKSIZE * 31, SEEK_SET);
+//    if (write(disk, &hello[512], 100 * sizeof(char)) != 100 * sizeof(char)) {
+//	perror("write hello");
+//	unlink(DISK_FILE_NAME);
+//	exit(1);
+//    }
     exit(0);
 }

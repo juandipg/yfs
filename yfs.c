@@ -70,6 +70,7 @@ getNthBlock(struct inode *inode, int n, bool allocateIfNeeded) {
     }
     if (n < NUM_DIRECT) {
         if (isOver) {
+            TracePrintf(1, "I'm allocating a new block!\n");
             inode->direct[n] = getNextFreeBlockNum();
         }
         // if getNextFreeBlockNum returned 0, return 0
@@ -451,6 +452,107 @@ yfsCreate(char *pathname, int currentInode) {
 }
 
 int
+yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
+    (void)pid;
+    void *inodeBlock = getBlockForInode(inodeNum);
+    struct inode *inode = getInode(inodeBlock, inodeNum);
+    
+    if (byteOffset > inode->size) {
+        return ERROR;
+    }
+    
+    int bytesLeft = size;
+    if (inode->size - byteOffset < size) {
+        bytesLeft = inode->size - byteOffset;
+    }
+    
+    int returnVal = bytesLeft;
+    
+    int blockOffset = byteOffset % BLOCKSIZE;
+
+    int bytesToCopy = BLOCKSIZE - blockOffset;
+    
+    int i;
+    for (i = byteOffset / BLOCKSIZE; bytesLeft > 0; i++) {
+        int blockNum = getNthBlock(inode, i, false);
+        if (blockNum == 0) {
+            return ERROR;
+        }
+        void *currentBlock = getBlock(blockNum);
+        
+        if (bytesLeft < bytesToCopy) {
+            bytesToCopy = bytesLeft;
+        }
+        
+        memcpy(buf, (char *)currentBlock + blockOffset, bytesToCopy);
+        
+        buf += bytesToCopy;
+        free(currentBlock);
+        blockOffset = 0;
+        bytesLeft -= bytesToCopy;
+        bytesToCopy = BLOCKSIZE;
+    }
+    
+    return returnVal;
+}
+
+int 
+yfsWrite(int inodeNum, void *buf, int size, int pid, int byteOffset) {
+    (void)pid;
+    void *inodeBlock = getBlockForInode(inodeNum);
+    struct inode *inode = getInode(inodeBlock, inodeNum);
+    TracePrintf(1, "inode size = %d\n", inode->size);
+    TracePrintf(1, "first direct block = %d\n", inode->direct[0]);
+    TracePrintf(1, "second direct block = %d\n", inode->direct[1]);
+    if (inode->type != INODE_REGULAR) {
+        return ERROR;
+    }
+    
+    int bytesLeft = size;
+    
+    int returnVal = bytesLeft;
+    
+    int blockOffset = byteOffset % BLOCKSIZE;
+
+    int bytesToCopy = BLOCKSIZE - blockOffset;
+    
+    int i;
+    for (i = byteOffset / BLOCKSIZE; bytesLeft > 0; i++) {
+        int blockNum = getNthBlock(inode, i, true);
+        if (blockNum == 0) {
+            return ERROR;
+        }
+        void *currentBlock = getBlock(blockNum);
+        
+        if (bytesLeft < bytesToCopy) {
+            bytesToCopy = bytesLeft;
+        }
+        
+        memcpy((char *)currentBlock + blockOffset, buf, bytesToCopy);
+        
+        
+        
+        buf += bytesToCopy;
+        saveBlock(blockNum, currentBlock);
+        
+        free(currentBlock);
+        blockOffset = 0;
+        bytesLeft -= bytesToCopy;
+        bytesToCopy = BLOCKSIZE;
+        int bytesWrittenSoFar = size - bytesLeft;
+        TracePrintf(1, "bytes written so far = %d\n", bytesWrittenSoFar);
+        TracePrintf(1, "inode size = %d\n", inode->size);
+        if (bytesWrittenSoFar + byteOffset > inode->size) {
+            inode->size = bytesWrittenSoFar + byteOffset;
+            TracePrintf(1, "increased size of inode to: %d\n", inode->size);
+        }
+    }
+    int blockNumber = (inodeNum / INODESPERBLOCK) + 1;
+    saveBlock(blockNumber, inodeBlock);
+    return returnVal;
+}
+
+int
 main(int argc, char **argv)
 {
     (void) argc;
@@ -458,8 +560,27 @@ main(int argc, char **argv)
     init();
     TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
     TracePrintf(1, "I'm running!\n");
-    char *pathName = "a/b/w.txt";
-    int result = yfsCreate(pathName, ROOTINODE);
-    TracePrintf(1, "Resulting inode number = %d\n", result);
+    
+    int i;
+    char hello[612];
+    for (i = 0; i < 612; i++) 
+    {
+        if (i % 2 == 0) {
+            hello[i] = '2';
+        } else {
+            hello[i] = '1';
+        }
+    }
+    hello[610] = 'a';
+    hello[611] = 'b';
+    
+    //char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
+    int writeResult = yfsWrite(20, hello, 612, 0, 0);
+    TracePrintf(1, "Bytes written = %d\n", writeResult);
+    
+    char *readMe = malloc(612*sizeof(char));
+    int readResult = yfsRead(20, readMe, 612, 0, 0);
+    TracePrintf(1, "Bytes read = %d\n", readResult);
+    TracePrintf(1, "String read = %s\n", readMe);
     return (0);
 }

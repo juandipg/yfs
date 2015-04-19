@@ -56,17 +56,31 @@ getBlockForInode(int inodeNumber) {
  * Results: mallocs that block into memory
  */
 int
-getNthBlock(struct inode *inode, int n) {
-    if ((n*BLOCKSIZE > inode->size)
-            || (n > NUM_DIRECT + BLOCKSIZE / (int)sizeof(int))) 
+getNthBlock(struct inode *inode, int n, bool allocateIfNeeded) {
+    bool isOver = false;
+    if (n >= NUM_DIRECT + BLOCKSIZE / (int)sizeof(int)) {
+        return 0;
+    }
+    if (n*BLOCKSIZE >= inode->size) 
     {
+        isOver = true;
+    }
+    if (isOver && !allocateIfNeeded) {
         return 0;
     }
     if (n < NUM_DIRECT) {
+        if (isOver) {
+            inode->direct[n] = getNextFreeBlockNum();
+        }
+        // if getNextFreeBlockNum returned 0, return 0
         return inode->direct[n];
     } 
     //search the direct blocks
     int *indirectBlock = getBlock(inode->indirect);
+    if (isOver) {
+        // if getNextFreeBlockNum returned 0, return 0
+        indirectBlock[n - NUM_DIRECT] = getNextFreeBlockNum();
+    }
     int blockNum = indirectBlock[n - NUM_DIRECT];
     free(indirectBlock);
     return blockNum;
@@ -169,6 +183,15 @@ addFreeInodeToList(int inodeNum) {
     freeInodeCount++;
 }
 
+int getNextFreeBlockNum() {
+    if (firstFreeBlock == NULL) {
+        return 0;
+    }
+    int blockNum = firstFreeBlock->blockNumber;
+    firstFreeBlock = firstFreeBlock->next;
+    return blockNum;
+}
+
 void
 addFreeBlockToList(int blockNum) {
     freeBlock *newHead = malloc(sizeof(freeBlock));
@@ -214,7 +237,7 @@ buildFreeInodeAndBlockLists() {
                 // keep track of all these blocks as taken
                 int i = 0;
                 int blockNum;
-                while((blockNum = getNthBlock(inode, i++)) != 0) {
+                while((blockNum = getNthBlock(inode, i++, false)) != 0) {
                     takenBlocks[blockNum] = true;
                 }
             }
@@ -242,11 +265,13 @@ buildFreeInodeAndBlockLists() {
 
 void
 clearFile(struct inode *inode) {
-    //TODO iterate through blocks and add them to free block list
-    
+    int i = 0;
+    int blockNum;
+    while ((blockNum = getNthBlock(inode, i++, false)) != 0) {
+        addFreeBlockToList(blockNum);
+    }
     inode->size = 0;
 }
-
 
 /*
  * Returns offset within blocknum block
@@ -263,7 +288,7 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
     
     struct inode *inode = getInode(block, inodeStartNumber);
     int i = 0;
-    int blockNum = getNthBlock(inode, i);
+    int blockNum = getNthBlock(inode, i, false);
     int currBlockNum = 0;
     int totalSize = sizeof (struct dir_entry);
     bool isFound = false;
@@ -291,7 +316,7 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
             break;
         }
         currBlockNum = blockNum;
-        blockNum = getNthBlock(inode, ++i);
+        blockNum = getNthBlock(inode, ++i, false);
     }
     
     *blockNumPtr = blockNum;
@@ -307,12 +332,20 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
             free(block);
             return freeEntryOffset;
         }
-        if (DIRENTRIESPERBLOCK % inode->size == 0) {
+        if (inode->size % BLOCKSIZE == 0) {
+            // we're at the bottom edge of the block, so
             // we need to allocate a new block
-                //TODO
+            blockNum = getNthBlock(inode, i, true);
+            currentBlock = getBlock(blockNum);
             inode->size += sizeof(struct dir_entry);
+            struct dir_entry * newEntry = (struct dir_entry *) currentBlock;
+            newEntry->inum = 0;
+            saveBlock(blockNum, currentBlock);
+            saveBlock(inodeBlockNumber, block);
+            *blockNumPtr = blockNum;
             free(block);
-            return -1;
+            free(currentBlock);
+            return 0;
         } 
         inode->size += sizeof(struct dir_entry);
         saveBlock(inodeBlockNumber, block);
@@ -321,7 +354,6 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
         free(block);
         return offset;
     }
-
     return -1;
 }
 

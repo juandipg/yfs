@@ -273,6 +273,7 @@ clearFile(struct inode *inode, int inodeNum, void *block) {
     }
     inode->size = 0;
     saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
+    addFreeInodeToList(inodeNum);
 }
 
 /*
@@ -360,15 +361,6 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
 }
 
 int
-yfsOpen(char *pathname, int currentInode) {
-    if (pathname[0] == '/') {
-        pathname += sizeof(char);
-        currentInode = ROOTINODE;
-    }
-    return getInodeNumberForPath(pathname, currentInode);
-}
-
-int
 getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
         // error checking
     int i;
@@ -416,6 +408,15 @@ getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
         *filenamePtr = pathname;
         return currentInode;
     }
+}
+
+int
+yfsOpen(char *pathname, int currentInode) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    return getInodeNumberForPath(pathname, currentInode);
 }
 
 int
@@ -698,6 +699,33 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
     return 0;
 }
 
+int 
+yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
+    int symInodeNum = getInodeNumberForPath(pathname, currentInode);
+    if (symInodeNum == ERROR) {
+        return ERROR;
+    }
+    void *symInodeBlock = getBlockForInode(symInodeNum);
+    struct inode *symInode = getInode(symInodeBlock, symInodeNum);
+    
+    int dataBlockNum = symInode->direct[0];
+    char *dataBlock = (char *)getBlock(dataBlockNum);
+    
+    int charsRead = 0;
+    
+    while (charsRead < len && dataBlock[charsRead] != '\0') {
+        buf[charsRead] = dataBlock[charsRead];
+        charsRead++;
+    }
+    
+    return charsRead;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -721,18 +749,12 @@ main(int argc, char **argv)
     
     int result = yfsSymLink("/a/b", "/d", ROOTINODE);
     TracePrintf(1, "result = %d\n", result);
+
     
-    int inodeNum = getInodeNumberForPath("d", ROOTINODE);
-    TracePrintf(1, "Inode number = %d\n", inodeNum);
-    void *inodeBlock = getBlockForInode(inodeNum);
-    struct inode *inode = getInode(inodeBlock, inodeNum);
-    
-    int dataBlockNum = inode->direct[0];
-    char *dataBlock = (char *)getBlock(dataBlockNum);
-    
-    TracePrintf(1, "data block number = %d\n", dataBlockNum);
-    TracePrintf(1, "inode size = %d\n", inode->size);
-    TracePrintf(1, "resulting data block string = %s\n", dataBlock);
+    char *buf = malloc(4);
+    int readResult = yfsReadLink("/d", buf, 4, ROOTINODE);
+    TracePrintf(1, "readResult = %d\n", readResult);
+    TracePrintf(1, "resulting data block string = %s\n", buf);
     
 //    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
 //    int writeResult = yfsWrite(20, hello, 612, 0, 0);

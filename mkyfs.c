@@ -96,6 +96,7 @@ main(int argc, char **argv)
     inodes[20].type = INODE_REGULAR;
     inodes[20].size = 35 * sizeof(char);
     inodes[20].direct[0] = 20;
+    inodes[20].nlink = 1;
     //inodes[20].direct[1] = 31;
     
 

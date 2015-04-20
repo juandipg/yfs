@@ -265,13 +265,14 @@ buildFreeInodeAndBlockLists() {
 }
 
 void
-clearFile(struct inode *inode) {
+clearFile(struct inode *inode, int inodeNum, void *block) {
     int i = 0;
     int blockNum;
     while ((blockNum = getNthBlock(inode, i++, false)) != 0) {
         addFreeBlockToList(blockNum);
     }
     inode->size = 0;
+    saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
 }
 
 /*
@@ -435,7 +436,7 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
         int inodeNum = dir_entry->inum;
         void *block = getBlockForInode(inodeNum);
         struct inode *inode = getInode(block, inodeNum);
-        clearFile(inode);
+        clearFile(inode, inodeNum, block);
         
         // TODO have method to calculate block number?
         saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
@@ -522,9 +523,6 @@ yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
     (void)pid;
     void *inodeBlock = getBlockForInode(inodeNum);
     struct inode *inode = getInode(inodeBlock, inodeNum);
-    TracePrintf(1, "inode size = %d\n", inode->size);
-    TracePrintf(1, "first direct block = %d\n", inode->direct[0]);
-    TracePrintf(1, "second direct block = %d\n", inode->direct[1]);
     if (inode->type != INODE_REGULAR) {
         return ERROR;
     }
@@ -559,11 +557,8 @@ yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
         bytesLeft -= bytesToCopy;
         bytesToCopy = BLOCKSIZE;
         int bytesWrittenSoFar = size - bytesLeft;
-        TracePrintf(1, "bytes written so far = %d\n", bytesWrittenSoFar);
-        TracePrintf(1, "inode size = %d\n", inode->size);
         if (bytesWrittenSoFar + byteOffset > inode->size) {
             inode->size = bytesWrittenSoFar + byteOffset;
-            TracePrintf(1, "increased size of inode to: %d\n", inode->size);
         }
     }
     int blockNumber = (inodeNum / INODESPERBLOCK) + 1;
@@ -593,24 +588,46 @@ yfsLink(char *oldName, char *newName, int currentInode) {
         return ERROR;
     }
     inode->nlink++;
+    TracePrintf(1, "just linked, new inode nlink count is: %d\n", inode->nlink);
+    saveBlock((oldNameNodeNum / INODESPERBLOCK) + 1, oldNodeBlock);
+    
     return 0;
 }
 
 int
 yfsUnlink(char *pathname, int currentInode) {
-    (void) pathname;
-    (void) currentInode;
     // Get the containind directory 
-    
+    char *filename;
+    int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
+
+    int blockNum;
+    int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
+    void *block = getBlock(blockNum);
+
     // Get the directory entry associated with the path
-    
-    // Set the inum to zero
+    struct dir_entry *dir_entry = (struct dir_entry *) ((char *)block + offset);
     
     // Get the inode associated with the directory entry
+    int inodeNum = dir_entry->inum;
+    void *inodeBlock = getBlockForInode(inodeNum);
+    struct inode *inode = getInode(inodeBlock, inodeNum);
     
     // Decrease nlinks by 1
+    inode->nlink--;
+     TracePrintf(1, "just unlinked, new inode nlink count is: %d\n", inode->nlink);
     
     // If nlinks == 0, clear the file
+    if (inode->nlink == 0) {
+        TracePrintf(1, "about to clear the file!\n");
+        clearFile(inode, inodeNum, inodeBlock);
+    } 
+    
+    saveBlock((inodeNum / INODESPERBLOCK) + 1, inodeBlock);
+    
+    // Set the inum to zero
+    dir_entry->inum = 0;
+    saveBlock(blockNum, block);
+    
     return 0;
 }
 
@@ -622,8 +639,45 @@ main(int argc, char **argv)
     init();
     TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
     TracePrintf(1, "I'm running!\n");
-    char *pathName = "a/b/w.txt";
-    int result = yfsCreate(pathName, ROOTINODE, -1);
-    TracePrintf(1, "Resulting inode number = %d\n", result);
+    
+    int i;
+    char hello[612];
+    for (i = 0; i < 612; i++) 
+    {
+        if (i % 2 == 0) {
+            hello[i] = '2';
+        } else {
+            hello[i] = '1';
+        }
+    }
+    hello[610] = 'a';
+    hello[611] = 'b';
+    
+    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
+    int writeResult = yfsWrite(20, hello, 612, 0, 0);
+    TracePrintf(1, "Bytes written = %d\n", writeResult);
+    int writeResult2 = yfsWrite(20, writeMe, 26, 500, 0);
+    TracePrintf(1, "Bytes written = %d\n", writeResult2);
+    
+    int linkResult = yfsLink("/a/b/x.txt", "/a/b/z.txt", ROOTINODE);
+    TracePrintf(1, "Link result = %d\n", linkResult);
+    
+    int unlinkResult = yfsUnlink("/a/b/z.txt", ROOTINODE);
+    TracePrintf(1, "unlink result = %d\n", unlinkResult);
+    
+    int ztxtInode = getInodeNumberForPath("a/b/z.txt", ROOTINODE);
+    
+    char *readMe = malloc(612*sizeof(char));
+    int readResult = yfsRead(ztxtInode, readMe, 638, 0, 0);
+    TracePrintf(1, "Bytes read = %d\n", readResult);
+    TracePrintf(1, "String read = %s\n", readMe);
+    
+    int unlinkResult2 = yfsUnlink("/a/b/x.txt", ROOTINODE);
+    TracePrintf(1, "unlink result = %d\n", unlinkResult2);
+    
+    char *readMe2 = malloc(612*sizeof(char));
+    readResult = yfsRead(20, readMe2, 638, 0, 0);
+    TracePrintf(1, "Bytes read = %d\n", readResult);
+    TracePrintf(1, "String read = %s\n", readMe2);
     return (0);
 }

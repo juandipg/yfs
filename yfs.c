@@ -397,21 +397,25 @@ getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
         i++;
     }
     
-    char path[lastSlashIndex + 1];
-    for (i = 0; i < lastSlashIndex; i++) {
-        path[i] = pathname[i];
+    if (lastSlashIndex != 0) {
+        char path[lastSlashIndex + 1];
+        for (i = 0; i < lastSlashIndex; i++) {
+            path[i] = pathname[i];
+        }
+        path[i] = '\0';
+
+        char *filename = pathname + (sizeof(char) * (lastSlashIndex + 1));
+        *filenamePtr = filename;
+        // Get the inode of the directory the file should be created in
+        int dirInodeNum = getInodeNumberForPath(path, currentInode);
+        if (dirInodeNum == 0) {
+            return ERROR;
+        }
+        return dirInodeNum;
+    } else {
+        *filenamePtr = pathname;
+        return currentInode;
     }
-    path[i] = '\0';
-    
-    char *filename = pathname + (sizeof(char) * (lastSlashIndex + 1));
-    *filenamePtr = filename;
-    
-    // Get the inode of the directory the file should be created in
-    int dirInodeNum = getInodeNumberForPath(path, currentInode);
-    if (dirInodeNum == 0) {
-        return ERROR;
-    }
-    return dirInodeNum;
 }
 
 int
@@ -632,12 +636,74 @@ yfsUnlink(char *pathname, int currentInode) {
 }
 
 int
+yfsSymLink(char *oldname, char *newname, int currentInode) {
+    if (oldname == NULL || newname == NULL) {
+        return ERROR;
+    }
+    int i;
+    for (i = 0; i < MAXPATHNAMELEN; i++) {
+        if (oldname[i] == '\0') {
+            break;
+        }
+    }
+    if (i == MAXPATHNAMELEN) {
+        return ERROR;
+    }
+    
+    for (i = 0; i < MAXPATHNAMELEN; i++) {
+        if (newname[i] == '\0') {
+            break;
+        }
+    }
+    if (i == MAXPATHNAMELEN) {
+        return ERROR;
+    }
+    
+    // create a directory for newname
+    char *filename;
+    int dirInodeNum = getContainingDirectory(newname, currentInode, &filename);
+    TracePrintf(1, "dirInodeNum = %d\n", dirInodeNum);
+    // Search all directory entries of that inode for the file name to create
+    int blockNum;
+    TracePrintf(1, "filename = %s\n", filename);
+    int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
+    void *block = getBlock(blockNum);
+    
+    struct dir_entry *dir_entry = (struct dir_entry *) ((char *)block + offset);
+    
+    // link that inode to newname
+    int inodeNum = getNextFreeInodeNum();
+    dir_entry->inum = inodeNum;
+    memset(&dir_entry->name, '\0', MAXPATHNAMELEN);
+
+    for (i = 0; filename[i] != '\0'; i++) {
+        dir_entry->name[i] = filename[i];
+    };
+    saveBlock(blockNum, block);
+    block = getBlockForInode(inodeNum);
+    struct inode *inode = getInode(block, inodeNum);
+    inode->type = INODE_SYMLINK;
+    inode->size = sizeof(char) * strlen(oldname);
+    inode->nlink = 1;
+    inode->direct[0] = getNextFreeBlockNum();
+    
+    void *dataBlock = getBlock(inode->direct[0]);
+    memcpy(dataBlock, oldname, strlen(oldname));
+    
+    saveBlock(inode->direct[0], dataBlock);
+    free(dataBlock);
+    
+    saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
+    free(block);
+    return 0;
+}
+
+int
 main(int argc, char **argv)
 {
     (void) argc;
     (void) argv;
     init();
-    TracePrintf(1, "Num directory entries needed = %d\n", BLOCKSIZE * 13 / sizeof(struct dir_entry));
     TracePrintf(1, "I'm running!\n");
     
     int i;
@@ -653,31 +719,46 @@ main(int argc, char **argv)
     hello[610] = 'a';
     hello[611] = 'b';
     
-    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
-    int writeResult = yfsWrite(20, hello, 612, 0, 0);
-    TracePrintf(1, "Bytes written = %d\n", writeResult);
-    int writeResult2 = yfsWrite(20, writeMe, 26, 500, 0);
-    TracePrintf(1, "Bytes written = %d\n", writeResult2);
+    int result = yfsSymLink("/a/b", "/d", ROOTINODE);
+    TracePrintf(1, "result = %d\n", result);
     
-    int linkResult = yfsLink("/a/b/x.txt", "/a/b/z.txt", ROOTINODE);
-    TracePrintf(1, "Link result = %d\n", linkResult);
+    int inodeNum = getInodeNumberForPath("d", ROOTINODE);
+    TracePrintf(1, "Inode number = %d\n", inodeNum);
+    void *inodeBlock = getBlockForInode(inodeNum);
+    struct inode *inode = getInode(inodeBlock, inodeNum);
     
-    int unlinkResult = yfsUnlink("/a/b/z.txt", ROOTINODE);
-    TracePrintf(1, "unlink result = %d\n", unlinkResult);
+    int dataBlockNum = inode->direct[0];
+    char *dataBlock = (char *)getBlock(dataBlockNum);
     
-    int ztxtInode = getInodeNumberForPath("a/b/z.txt", ROOTINODE);
+    TracePrintf(1, "data block number = %d\n", dataBlockNum);
+    TracePrintf(1, "inode size = %d\n", inode->size);
+    TracePrintf(1, "resulting data block string = %s\n", dataBlock);
     
-    char *readMe = malloc(612*sizeof(char));
-    int readResult = yfsRead(ztxtInode, readMe, 638, 0, 0);
-    TracePrintf(1, "Bytes read = %d\n", readResult);
-    TracePrintf(1, "String read = %s\n", readMe);
-    
-    int unlinkResult2 = yfsUnlink("/a/b/x.txt", ROOTINODE);
-    TracePrintf(1, "unlink result = %d\n", unlinkResult2);
-    
-    char *readMe2 = malloc(612*sizeof(char));
-    readResult = yfsRead(20, readMe2, 638, 0, 0);
-    TracePrintf(1, "Bytes read = %d\n", readResult);
-    TracePrintf(1, "String read = %s\n", readMe2);
+//    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
+//    int writeResult = yfsWrite(20, hello, 612, 0, 0);
+//    TracePrintf(1, "Bytes written = %d\n", writeResult);
+//    int writeResult2 = yfsWrite(20, writeMe, 26, 500, 0);
+//    TracePrintf(1, "Bytes written = %d\n", writeResult2);
+//    
+//    int linkResult = yfsLink("/a/b/x.txt", "/a/b/z.txt", ROOTINODE);
+//    TracePrintf(1, "Link result = %d\n", linkResult);
+//    
+//    int unlinkResult = yfsUnlink("/a/b/z.txt", ROOTINODE);
+//    TracePrintf(1, "unlink result = %d\n", unlinkResult);
+//    
+//    int ztxtInode = getInodeNumberForPath("a/b/z.txt", ROOTINODE);
+//    
+//    char *readMe = malloc(612*sizeof(char));
+//    int readResult = yfsRead(ztxtInode, readMe, 638, 0, 0);
+//    TracePrintf(1, "Bytes read = %d\n", readResult);
+//    TracePrintf(1, "String read = %s\n", readMe);
+//    
+//    int unlinkResult2 = yfsUnlink("/a/b/x.txt", ROOTINODE);
+//    TracePrintf(1, "unlink result = %d\n", unlinkResult2);
+//    
+//    char *readMe2 = malloc(612*sizeof(char));
+//    readResult = yfsRead(20, readMe2, 638, 0, 0);
+//    TracePrintf(1, "Bytes read = %d\n", readResult);
+//    TracePrintf(1, "String read = %s\n", readMe2);
     return (0);
 }

@@ -303,7 +303,6 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
     void * currentBlock;
     struct dir_entry *currentEntry;
     
-    TracePrintf(1, "getDirectoryEntry for pathname = %s\n", pathname);
     int inodeBlockNumber = (inodeStartNumber / INODESPERBLOCK) + 1;
     void *block = getBlock(inodeBlockNumber);
     
@@ -324,7 +323,6 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
                 freeEntryOffset = (int)((char *)currentEntry - (char *)currentBlock);
             }
             //check the currentEntry fileName to see if it matches
-            TracePrintf(1, "currentEntry->name = %s\n", currentEntry->name);
             if (isEqual(pathname, currentEntry->name)) {
                 isFound = true;
                 break;
@@ -638,7 +636,6 @@ yfsUnlink(char *pathname, int currentInode) {
     
     // Decrease nlinks by 1
     inode->nlink--;
-     TracePrintf(1, "just unlinked, new inode nlink count is: %d\n", inode->nlink);
     
     // If nlinks == 0, clear the file
     if (inode->nlink == 0) {
@@ -765,8 +762,7 @@ yfsMkDir(char *pathname, int currentInode) {
     if (dir_entry->inum != 0) {
         return ERROR;
     }
-    
-    
+
     memset(&dir_entry->name, '\0', MAXPATHNAMELEN);
     int i;
     for (i = 0; filename[i] != '\0'; i++) {
@@ -800,7 +796,44 @@ yfsMkDir(char *pathname, int currentInode) {
     
     saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
     free(block);
-    return inodeNum;
+    return 0;
+}
+
+int
+yfsRmDir(char *pathname, int currentInode) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
+    int inodeNum = getInodeNumberForPath(pathname, currentInode);
+    if (inodeNum == ERROR) {
+        return ERROR;
+    }
+    void *inodeBlock = getBlockForInode(inodeNum);
+    struct inode *inode = getInode(inodeBlock, inodeNum);
+    
+    if (inode->size > (int)(2*sizeof(struct dir_entry))) {
+        return ERROR;
+    }
+    
+    clearFile(inode, inodeNum, inodeBlock);
+    
+    
+    char *filename;
+    int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
+
+    int blockNum;
+    int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
+    void *block = getBlock(blockNum);
+
+    // Get the directory entry associated with the path
+    struct dir_entry *dir_entry = (struct dir_entry *) ((char *)block + offset);
+    
+    // Set the inum to zero
+    dir_entry->inum = 0;
+    saveBlock(blockNum, block);
+    return 0;
 }
 
 int
@@ -834,6 +867,13 @@ main(int argc, char **argv)
     result = yfsMkDir("/1/3", ROOTINODE);
     TracePrintf(1, "mkdir result = %d\n", result);
     
+    
+    int rmResult = yfsRmDir("/1", ROOTINODE);
+    TracePrintf(1, "remove result = %d\n", rmResult);
+    
+    int inodeNum = getInodeNumberForPath("1/2", ROOTINODE);
+    TracePrintf(1, "inodenum of 1/2 = %d\n", inodeNum);
+    
 //    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
 //    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);
 //    
@@ -843,8 +883,6 @@ main(int argc, char **argv)
 //    inodeNum = getInodeNumberForPath("1/3", ROOTINODE);
 //    TracePrintf(1, "inodenum of 1/3 = %d\n", inodeNum);
     
-    int inodeNum = getInodeNumberForPath("1/3/.", ROOTINODE);
-    TracePrintf(1, "inodenum of 1/3/. = %d\n", inodeNum);
     
     
 //    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";

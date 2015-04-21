@@ -97,6 +97,18 @@ getNthBlock(struct inode *inode, int n, bool allocateIfNeeded) {
 int
 getInodeNumberForPath(char *path, int inodeStartNumber)
 {
+//    int lastSlashIndex = 0;
+//    int i = 0;
+//    while ((path[i] != '\0') && (i < MAXPATHNAMELEN)) {
+//        if (path[i] == '/') {
+//            lastSlashIndex = i;
+//        }
+//        i++;
+//    }
+//    if (lastSlashIndex == 0) {
+//        return inodeStartNumber;
+//    }
+    
     //get the inode number for the first file in path 
     // ex: if path is "/a/b/c.txt" get the indoe # for "a"
     int nextInodeNumber = 0;
@@ -120,8 +132,15 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
         free(block);
         return ERROR;
     } else if (inode->type == INODE_SYMLINK) {
-        free(block);
-        return ERROR;
+        int dataBlockNum = inode->direct[0];
+        char *dataBlock = (char *)getBlock(dataBlockNum);
+        if (dataBlock[0] == 0) {
+            dataBlock += sizeof(char);
+            inodeStartNumber = ROOTINODE;
+        }
+        int currInodeNum = getInodeNumberForPath(dataBlock, inodeStartNumber);
+        free(dataBlock);
+        return getInodeNumberForPath(path, currInodeNum);
     }
     char *nextPath = path;
     if (nextInodeNumber == 0) {
@@ -136,7 +155,6 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
         nextPath += sizeof (char);
     }
     nextPath += sizeof (char);
-    TracePrintf(1, "About to make recursive call\n");
     return getInodeNumberForPath(nextPath, nextInodeNumber);
 }
 
@@ -153,7 +171,6 @@ freeUpInode(int inodeNum) {
     // get address of this inode 
     struct inode *inode = getInode(block, inodeNum);
     
-    TracePrintf(1, "freeing up inode %d, with type %d\n", inodeNum, inode->type);
     // modify the type of inode to free
     inode->type = INODE_FREE;
     // TODO: remove this free
@@ -286,6 +303,7 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
     void * currentBlock;
     struct dir_entry *currentEntry;
     
+    TracePrintf(1, "getDirectoryEntry for pathname = %s\n", pathname);
     int inodeBlockNumber = (inodeStartNumber / INODESPERBLOCK) + 1;
     void *block = getBlock(inodeBlockNumber);
     
@@ -305,7 +323,8 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
                 freeEntryBlockNum = blockNum;
                 freeEntryOffset = (int)((char *)currentEntry - (char *)currentBlock);
             }
-            //check the currentEntry fileName to see if it matches 
+            //check the currentEntry fileName to see if it matches
+            TracePrintf(1, "currentEntry->name = %s\n", currentEntry->name);
             if (isEqual(pathname, currentEntry->name)) {
                 isFound = true;
                 break;
@@ -727,6 +746,64 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
 }
 
 int
+yfsMkDir(char *pathname, int currentInode) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
+    char *filename;
+    int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
+    // Search all directory entries of that inode for the file name to create
+    int blockNum;
+    int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
+    void *block = getBlock(blockNum);
+    
+    struct dir_entry *dir_entry = (struct dir_entry *) ((char *)block + offset);
+    
+    // return error if this directory already exists
+    if (dir_entry->inum != 0) {
+        return ERROR;
+    }
+    
+    
+    memset(&dir_entry->name, '\0', MAXPATHNAMELEN);
+    int i;
+    for (i = 0; filename[i] != '\0'; i++) {
+        dir_entry->name[i] = filename[i];
+    }
+    
+    int inodeNum = getNextFreeInodeNum();
+    dir_entry->inum = inodeNum;
+    saveBlock(blockNum, block);
+    block = getBlockForInode(inodeNum);
+    
+    struct inode *inode = getInode(block, inodeNum);
+    inode->type = INODE_DIRECTORY;
+    inode->size = 2 * sizeof (struct dir_entry);
+    inode->nlink = 1;
+    
+    int firstDirectBlockNum = getNextFreeBlockNum();
+    void *firstDirectBlock = getBlock(firstDirectBlockNum);
+    inode->direct[0] = firstDirectBlockNum;
+    
+    struct dir_entry *dir1 = (struct dir_entry *)firstDirectBlock;
+    dir1->inum = inodeNum;
+    dir1->name[0] = '.';
+    
+    struct dir_entry *dir2 = (struct dir_entry *)((char *)dir1 + sizeof(struct dir_entry));
+    dir2->inum = dirInodeNum;
+    dir2->name[0] = '.';
+    dir2->name[1] = '.';
+    
+    saveBlock(firstDirectBlockNum, firstDirectBlock);
+    
+    saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
+    free(block);
+    return inodeNum;
+}
+
+int
 main(int argc, char **argv)
 {
     (void) argc;
@@ -747,14 +824,28 @@ main(int argc, char **argv)
     hello[610] = 'a';
     hello[611] = 'b';
     
-    int result = yfsSymLink("/a/b", "/d", ROOTINODE);
-    TracePrintf(1, "result = %d\n", result);
-
+    int result = yfsMkDir("/1", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
     
-    char *buf = malloc(4);
-    int readResult = yfsReadLink("/d", buf, 4, ROOTINODE);
-    TracePrintf(1, "readResult = %d\n", readResult);
-    TracePrintf(1, "resulting data block string = %s\n", buf);
+    
+    result = yfsMkDir("/1/2", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsMkDir("/1/3", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+//    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
+//    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);
+//    
+//    inodeNum = getInodeNumberForPath("1/2", ROOTINODE);
+//    TracePrintf(1, "inodenum of 1/2 = %d\n", inodeNum);
+//    
+//    inodeNum = getInodeNumberForPath("1/3", ROOTINODE);
+//    TracePrintf(1, "inodenum of 1/3 = %d\n", inodeNum);
+    
+    int inodeNum = getInodeNumberForPath("1/3/.", ROOTINODE);
+    TracePrintf(1, "inodenum of 1/3/. = %d\n", inodeNum);
+    
     
 //    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
 //    int writeResult = yfsWrite(20, hello, 612, 0, 0);

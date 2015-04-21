@@ -837,6 +837,16 @@ yfsRmDir(char *pathname, int currentInode) {
 }
 
 int
+yfsChDir(char *pathname, int currentInode) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
+    return getInodeNumberForPath(pathname, currentInode);
+}
+
+int
 main(int argc, char **argv)
 {
     (void) argc;

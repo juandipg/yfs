@@ -33,10 +33,10 @@ ALL = yfs iolib.a
 #	You must modify the YFS_OBJS and YFS_SRCS definitions below.
 #	YFS_OBJS should be a list of the .o files that make up your
 #	YFS server, and YFS_SRCS should  be a list of the corresponding
-#	source files that make up your serever.
+#	source files that make up your server.
 #
-YFS_OBJS = yfs.o
-YFS_SRCS = yfs.c
+YFS_OBJS = yfs.o hash_table.o
+YFS_SRCS = yfs.c hash_table.c
 
 #
 #	You must also modify the IOLIB_OBJS and IOLIB_SRCS definitions

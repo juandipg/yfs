@@ -29,7 +29,9 @@ struct queue {
     cacheItem *lastItem;
 };
 
-struct inode* getInode(void *blockAddr, int inodeNum);
+void *getBlock(int blockNumber);
+void destroyCacheItem(cacheItem *item);
+struct inode* getInode(int inodeNum);
 void addFreeInodeToList(int inodeNum);
 void buildFreeInodeAndBlockLists();
 int getNextFreeBlockNum();

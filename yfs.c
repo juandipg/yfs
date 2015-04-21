@@ -5,6 +5,7 @@
 #include <string.h>
 #include "yfs.h"
 #include "hash_table.h"
+#include <comp421/iolib.h>
 
 #define LOADFACTOR 1.5
 
@@ -1009,12 +1010,37 @@ yfsChDir(char *pathname, int currentInode) {
 }
 
 int
+yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
+    int inodeNum = getInodeNumberForPath(pathname, currentInode);
+    if (inodeNum == 0) {
+        return ERROR;
+    }
+    struct inode *inode = getInode(inodeNum);
+    
+    statbuf->inum = inodeNum;
+    statbuf->nlink = inode->nlink;
+    statbuf->size = inode->size;
+    statbuf->type = inode->type;
+    
+    return 0;
+}
+
+int
 main(int argc, char **argv)
 {
-    (void) argc;
-    (void) argv;
     init();
-    TracePrintf(1, "I'm running!\n");
+    
+    if (argc > 1) {
+    int pid = Fork();
+        if (pid == 0) {
+            Exec(argv[1], argv + 1);
+        }
+    }
     
     int i;
     char hello[612];
@@ -1064,7 +1090,22 @@ main(int argc, char **argv)
     int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
     TracePrintf(1, "inode num of /a/b/c = %d\n", inode2);
     
+    struct Stat *stat = malloc(sizeof(struct Stat));
     
+    int statresult = yfsStat("/a/b", ROOTINODE, stat);
+    TracePrintf(1, "stat result = %d\n", statresult);
+    TracePrintf(1, "stat->inum = %d\n", stat->inum);
+    TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
+    TracePrintf(1, "stat->size = %d\n", stat->size);
+    TracePrintf(1, "stat->type = %d\n", stat->type);
+    
+    
+    statresult = yfsStat("/f/g/h", ROOTINODE, stat);
+    TracePrintf(1, "stat result = %d\n", statresult);
+    TracePrintf(1, "h stat->inum = %d\n", stat->inum);
+    TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);
+    TracePrintf(1, "h stat->size = %d\n", stat->size);
+    TracePrintf(1, "h stat->type = %d\n", stat->type);
     
 //    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
 //    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);

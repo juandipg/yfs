@@ -112,7 +112,8 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     //get the inode number for the first file in path 
     // ex: if path is "/a/b/c.txt" get the indoe # for "a"
     int nextInodeNumber = 0;
-
+    TracePrintf(1, "path = %s\n", path);
+    TracePrintf(1, "inodeStartNumber = %d\n", inodeStartNumber);
     //Get inode corresponding to inodeStartNumber
     void *block = getBlockForInode(inodeStartNumber);
     struct inode *inode = getInode(block, inodeStartNumber);
@@ -132,15 +133,9 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
         free(block);
         return ERROR;
     } else if (inode->type == INODE_SYMLINK) {
-        int dataBlockNum = inode->direct[0];
-        char *dataBlock = (char *)getBlock(dataBlockNum);
-        if (dataBlock[0] == 0) {
-            dataBlock += sizeof(char);
-            inodeStartNumber = ROOTINODE;
-        }
-        int currInodeNum = getInodeNumberForPath(dataBlock, inodeStartNumber);
-        free(dataBlock);
-        return getInodeNumberForPath(path, currInodeNum);
+        free(block);
+
+        return ERROR;
     }
     char *nextPath = path;
     if (nextInodeNumber == 0) {
@@ -150,11 +145,37 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     while (nextPath[0] != '/') {
         // base case
         if (nextPath[0] == '\0') {
-            return nextInodeNumber;
+            block = getBlockForInode(nextInodeNumber);
+            inode = getInode(block, nextInodeNumber);
+            
+            if (inode->type != INODE_SYMLINK) {
+                return nextInodeNumber;
+            }
+            else {
+                nextPath = path;
+                break;
+            }
         }
         nextPath += sizeof (char);
     }
     nextPath += sizeof (char);
+    block = getBlockForInode(nextInodeNumber);
+    inode = getInode(block, nextInodeNumber);
+    if (inode->type == INODE_SYMLINK) {
+        int dataBlockNum = inode->direct[0];
+        char *dataBlock = (char *)getBlock(dataBlockNum);
+        if (dataBlock[0] == '/') {
+            dataBlock += sizeof(char);
+            inodeStartNumber = ROOTINODE;
+        }
+        nextInodeNumber = getInodeNumberForPath(dataBlock, inodeStartNumber);
+        if (nextPath[0] == '\0') {
+            free(dataBlock);
+            return nextInodeNumber;
+        }
+        free(dataBlock);
+    }
+    free(block);
     return getInodeNumberForPath(nextPath, nextInodeNumber);
 }
 
@@ -690,6 +711,7 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
     
     // link that inode to newname
     int inodeNum = getNextFreeInodeNum();
+    TracePrintf(1, "creating new inode for filename: %s, %d\n", filename, inodeNum);
     dir_entry->inum = inodeNum;
     memset(&dir_entry->name, '\0', MAXPATHNAMELEN);
 
@@ -867,22 +889,42 @@ main(int argc, char **argv)
     hello[610] = 'a';
     hello[611] = 'b';
     
-    int result = yfsMkDir("/1", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
+//    int result = yfsMkDir("/a", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsMkDir("/f", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsSymLink("d/e", "/a/b", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsMkDir("/a/d", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsSymLink("/f/g/h", "/a/d/e", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsMkDir("/f/g", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsMkDir("/f/g/h", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsMkDir("/f/g/h/j", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsSymLink("j", "/f/g/h/c", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    int inode1 = getInodeNumberForPath("f/g/h/j", ROOTINODE);
+    TracePrintf(1, "inode num of /f/g/h/j = %d\n", inode1);
+    
+    int inode3 = getInodeNumberForPath("f", ROOTINODE);
+    TracePrintf(1, "f inode = %d\n", inode3);
+    int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
+    TracePrintf(1, "inode num of /a/b/c = %d\n", inode2);
     
     
-    result = yfsMkDir("/1/2", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/1/3", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    
-    int rmResult = yfsRmDir("/1", ROOTINODE);
-    TracePrintf(1, "remove result = %d\n", rmResult);
-    
-    int inodeNum = getInodeNumberForPath("1/2", ROOTINODE);
-    TracePrintf(1, "inodenum of 1/2 = %d\n", inodeNum);
     
 //    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
 //    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);

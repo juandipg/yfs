@@ -9,16 +9,62 @@
  * Kaushik Kumar Ram.
  */
 
+typedef struct hash_table_mapping hash_table_mapping;
+
 /*
- * Declare the hash table struct type without exposing its implementation
- * details, because the callers to the following functions don't need to know
- * those details in order to declare, assign, or pass a pointer to this struct
- * type.  However, without knowing those details, any attempt to dereference
- * such a pointer will result in a compilation error.  This is an example of
- * "data hiding", which is a good principle to follow in designing and
- * implementing data abstractions.
+ * A hash table mapping:
+ *
+ *  Stores the association or mapping from a string "key" to its opaque
+ *  "value".  Each mapping is an element of a singly-linked list.  This list
+ *  is called a collision chain.
  */
-struct hash_table;
+struct hash_table_mapping {
+	/*
+	 * The "key" is a pointer to a string.
+	 */
+	int key;
+	/* 
+	 * The "value" is a pointer to an object of an unknown type, because
+	 * the hash table doesn't need to know the type in order to store and
+	 * return the pointer.
+	 */
+	void *value;
+	/*
+	 * The pointer to the next element in the same collision chain.
+	 */
+	hash_table_mapping *next; 
+};
+
+/*
+ * A hash table:
+ *
+ *  Stores a collection of "key"-to-"value" mappings.  Each mapping is an
+ *  element of a collision chain.  For efficiency, the number of collision
+ *  chains is kept in proportion to the number of mappings so that the average
+ *  length of a collision chain remains constant no matter how many mappings
+ *  the hash table contains.
+ */
+struct hash_table {
+	/* 
+	 * The array of collision chains.  Really, this is a pointer to an
+	 * array of pointers.  Each element of that array is the head of a
+	 * collision chain.
+	 */
+	hash_table_mapping **head;
+	/*
+	 * The number of collision chains.
+	 */
+	unsigned int size;
+	/*
+	 * The number of mappings in the hash table.
+	 */
+	unsigned int occupancy;		
+	/*
+	 * The upper bound on the average collision chain length that is
+	 * allowed before the number of collision chains is increased.
+	 */
+	double load_factor;
+};
 
 /*
  * Requires:
@@ -29,7 +75,7 @@ struct hash_table;
  *  length of a collision chain.  Returns a pointer to the hash table if it
  *  was successfully created and NULL if it was not.
  */
-struct hash_table *hash_table_create(double load_factor);
+struct hash_table *hash_table_create(double load_factor, int size);
 
 /*
  * Requires:
@@ -46,7 +92,7 @@ struct hash_table *hash_table_create(double load_factor);
  *  defined.  Returns "cookie"'s latest value.
  */
 void *hash_table_destroy(struct hash_table *ht,
-    void *(*destructor)(const char *key, void *value, void *cookie),
+    void *(*destructor)(int key, void *value, void *cookie),
     void *cookie);
 
 /*
@@ -59,7 +105,7 @@ void *hash_table_destroy(struct hash_table *ht,
  *  "value" in the hash table "ht".  Returns 0 if the mapping was successfully
  *  created and -1 if it was not.
  */
-int hash_table_insert(struct hash_table *ht, const char *key, void *value);
+int hash_table_insert(struct hash_table *ht, int key, void *value);
 
 /*
  * Requires:
@@ -75,7 +121,7 @@ int hash_table_insert(struct hash_table *ht, const char *key, void *value);
  *  Returns "cookie"'s latest value.
  */
 void *hash_table_iterate(struct hash_table *ht,
-    void *(*function)(const char *key, void *value, void *cookie),
+    void *(*function)(int key, void *value, void *cookie),
     void *cookie);
 
 /*
@@ -86,7 +132,7 @@ void *hash_table_iterate(struct hash_table *ht,
  *  Searches the hash table "ht" for the string "key".  If "key" is found,
  *  returns its associated value.  Otherwise, returns NULL.
  */
-void *hash_table_lookup(struct hash_table *ht, const char *key);
+void *hash_table_lookup(struct hash_table *ht, int key);
 
 /*
  * Requires:
@@ -101,6 +147,7 @@ void *hash_table_lookup(struct hash_table *ht, const char *key);
  *	cookie = destructor(key, value, cookie);
  *  Returns "cookie"'s value.
  */
-void *hash_table_remove(struct hash_table *ht, const char *key,
-    void *(*destructor)(const char *key, void *value, void *cookie),
+void *hash_table_remove(struct hash_table *ht, int key,
+    void *(*destructor)(int key, void *value, void *cookie),
     void *cookie);
+

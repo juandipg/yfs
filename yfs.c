@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "yfs.h"
+#include "hash_table.h"
+
+#define LOADFACTOR 1.5
 
 freeInode *firstFreeInode = NULL;
 freeBlock *firstFreeBlock = NULL;
@@ -12,10 +15,76 @@ int freeInodeCount = 0;
 int freeBlockCount = 0;
 int currentInode = ROOTINODE;
 
+queue *cacheInodeQueue;
+struct hash_table *inodeTable;
+int inodeCacheSize = 0;
+
+queue *cacheBlockQueue;
+struct hash_table *blockTable;
+int blockCacheSize = 0;
+
 
 void 
 init() {
+    TracePrintf(1, "inside init\n");
     buildFreeInodeAndBlockLists();
+    TracePrintf(1, "1\n");
+    cacheInodeQueue = malloc(sizeof(queue));
+    TracePrintf(1, "2\n");
+    cacheBlockQueue = malloc(sizeof(queue));
+    TracePrintf(1, "3\n");
+    inodeTable = hash_table_create(LOADFACTOR, INODE_CACHESIZE);
+    TracePrintf(1, "4\n");
+    blockTable = hash_table_create(LOADFACTOR, BLOCK_CACHESIZE);
+    TracePrintf(1, "5\n");
+}
+
+cacheItem *
+removeItemFromFrontOfQueue(queue *queue)
+{
+    cacheItem *firstItem = queue->firstItem;
+    if (firstItem == NULL) {
+        return NULL;
+    }
+    if (queue->firstItem->nextItem == NULL) {
+        TracePrintf(1, "Removing only proc from front of queue\n");
+        queue->lastItem = NULL;
+    }
+    
+    queue->firstItem->prevItem = NULL;
+    queue->firstItem = queue->firstItem->nextItem;
+    TracePrintf(1, "item removed was: %d\n", firstItem->number);
+    return firstItem;
+}
+
+void
+removeItemFromQueue(queue *queue, cacheItem *item)
+{
+    if (item->prevItem == NULL) {
+        removeItemFromFrontOfQueue(queue);
+    } else {
+        item->prevItem->nextItem = item->nextItem;
+        if (item->nextItem != NULL)
+            item->nextItem->prevItem = item->prevItem;
+    }
+}
+
+void
+addItemToEndOfQueue(cacheItem *item, queue *queue)
+{
+    // if the queue is empty
+    if (queue->firstItem == NULL) {
+        TracePrintf(1, "Adding item %d to end of empty queue\n", item->number);
+        item->nextItem = NULL;
+        queue->lastItem = item;
+        queue->firstItem = item;
+    } else {    // if the queue is nonempty
+        TracePrintf(1, "Adding item %d to end of NONempty queue\n", item->number);
+        queue->lastItem->nextItem = item;
+        item->prevItem = queue->lastItem;
+        queue->lastItem = item;
+        queue->lastItem->nextItem = NULL;
+    }
 }
 
 bool
@@ -35,14 +104,94 @@ isEqual(char *path, char dirEntryName[]) {
 
 void
 saveBlock(int blockNumber, void *block) {
+    // mark the block as dirty
+    
+    // don't do this anymore
     WriteSector(blockNumber, block);
 }
 
 void *
 getBlock(int blockNumber) {
+    // First check to see if Block is in the cache using hashmap
+    // If it is, remove it from the middle of the block queue add it to the front
+    // return the pointer to it
+    cacheItem *blockItem = (cacheItem *)hash_table_lookup(blockTable, blockNumber);
+    if (blockItem != NULL) {
+        removeItemFromQueue(cacheBlockQueue, blockItem);
+        addItemToEndOfQueue(blockItem, cacheBlockQueue);
+        return blockItem->addr;
+    }
+    
+    // If the block is not in the cache
+    
+    // If the cache is full, remove the LRU block from the end of the queue, 
+    // and get the block number
+    // Use the block number to remove it from the hashmap
+    if (blockCacheSize == BLOCK_CACHESIZE) {
+        cacheItem *lruBlockItem = removeItemFromFrontOfQueue(cacheBlockQueue);
+        int lruBlockNum = lruBlockItem->number;
+        hash_table_remove(blockTable, lruBlockNum, NULL, NULL);
+    }
+    
+    // allocate space for the new block, read it from disk 
+    // Add the new block to the front of the LRU queue and add it to the hashmap
+    // and then return the pointer to the new block
     void *block = malloc(BLOCKSIZE);
+    cacheItem *newItem = malloc(sizeof(cacheItem));
+    newItem->number = blockNumber;
+    newItem->addr = block;
+    newItem->dirty = false;
     ReadSector(blockNumber, block);
+    addItemToEndOfQueue(newItem, cacheBlockQueue);
     return block;
+}
+
+void
+saveInode(int inodeNum) {
+    (void) inodeNum;
+    // Lookup the inode ptr in the hashmap
+    
+    // mark the inode as dirty 
+}
+
+struct inode*
+getInode(void *blockAddr,  int inodeNum) {
+    // First, check to see if inode is in the cache using hashmap
+    // If it is, remove it from the middle of the inode queue and add it to the front
+    // return the pointer to the inode
+    
+    // If it is not in the cache
+    
+    // If the cache is full:
+    // Get the lru inode in the cache, remove it from the hashmap
+    // get the block number corresponding to lru inode
+    // get the block corresponding to this block number
+    // get the correct address corresponding to this inode within that block
+    // copy the contents of the lru inode into this address
+    // call save block on that block
+    
+    
+    // Get the block number corresponding to this new inode
+    
+    // Get the block address for this inode
+    
+    // Look up the inodes address within the block
+    // Copy the contents of the inode into a newly allocated inode
+    
+    
+    // Add this inode to the front of the LRU queue and add it to the hashmap
+    
+    // return the address of the new inode
+    
+    
+    int blockNum = (inodeNum / INODESPERBLOCK) + 1;
+    return (blockAddr + (inodeNum - (blockNum - 1) * INODESPERBLOCK) * INODESIZE);
+}
+
+void
+destroyCacheItem(cacheItem *item) {
+    free(item->addr);
+    free(item);
 }
 
 void *
@@ -209,6 +358,9 @@ getNextFreeInodeNum() {
         return 0;
     }
     int inodeNum = firstFreeInode->inodeNumber;
+    struct inode *inode = getInode(&inodeNum, inodeNum);
+    inode->reuse++;
+    saveInode(inodeNum);
     firstFreeInode = firstFreeInode->next;
     return inodeNum;
 }
@@ -238,12 +390,6 @@ addFreeBlockToList(int blockNum) {
     newHead->next = firstFreeBlock;
     firstFreeBlock = newHead;
     freeBlockCount++;
-}
-
-struct inode*
-getInode(void *blockAddr,  int inodeNum) {
-    int blockNum = (inodeNum / INODESPERBLOCK) + 1;
-    return (blockAddr + (inodeNum - (blockNum - 1) * INODESPERBLOCK) * INODESIZE);
 }
 
 void
@@ -889,32 +1035,32 @@ main(int argc, char **argv)
     hello[610] = 'a';
     hello[611] = 'b';
     
-//    int result = yfsMkDir("/a", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsMkDir("/f", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsSymLink("d/e", "/a/b", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsMkDir("/a/d", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsSymLink("/f/g/h", "/a/d/e", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsMkDir("/f/g", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsMkDir("/f/g/h", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsMkDir("/f/g/h/j", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
-//    
-//    result = yfsSymLink("j", "/f/g/h/c", ROOTINODE);
-//    TracePrintf(1, "mkdir result = %d\n", result);
+    int result = yfsMkDir("/a", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsMkDir("/f", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsSymLink("d/e", "/a/b", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsMkDir("/a/d", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsSymLink("/f/g/h", "/a/d/e", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsMkDir("/f/g", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsMkDir("/f/g/h", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsMkDir("/f/g/h/j", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
+    
+    result = yfsSymLink("j", "/f/g/h/c", ROOTINODE);
+    TracePrintf(1, "mkdir result = %d\n", result);
     
     int inode1 = getInodeNumberForPath("f/g/h/j", ROOTINODE);
     TracePrintf(1, "inode num of /f/g/h/j = %d\n", inode1);

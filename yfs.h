@@ -3,6 +3,16 @@
 
 typedef struct freeInode freeInode;
 typedef struct freeBlock freeBlock;
+typedef struct cacheItem cacheItem;
+typedef struct queue queue;
+
+struct cacheItem {
+    int number;
+    bool dirty;
+    void *addr;
+    cacheItem *prevItem;
+    cacheItem *nextItem;
+};
 
 struct freeInode {
     int inodeNumber;
@@ -12,6 +22,11 @@ struct freeInode {
 struct freeBlock {
     int blockNumber;
     freeBlock *next;
+};
+
+struct queue {
+    cacheItem *firstItem;
+    cacheItem *lastItem;
 };
 
 struct inode* getInode(void *blockAddr, int inodeNum);

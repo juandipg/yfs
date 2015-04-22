@@ -1,4 +1,24 @@
+#define __USE_GNU
+#include <string.h>
 #include <comp421/iolib.h>
+#include <comp421/filesystem.h>
+#include <comp421/yalnix.h>
+#include "message.h"
+
+int current_inode = ROOTINODE;
+
+int getLenForPath(char *pathname) {
+    int i;
+    for (i = 0; i < MAXPATHNAMELEN; i++) {
+        if (pathname[i] == '\0') {
+            break;
+        }
+    }
+    if (i == 0 || i == MAXPATHNAMELEN) {
+        return ERROR;
+    }
+    return i + 1;
+}
 
 int Open(char *pathname) {
     (void) pathname;
@@ -9,8 +29,20 @@ int Close(int fd) {
     return 0;
 }
 int Create(char *pathname) {
-    (void) pathname;
-    return 0;
+    int len = getLenForPath(pathname);
+    if (len == ERROR) {
+        return ERROR;
+    }
+    struct message_path msg;
+    msg.num = YFS_CREATE;
+    msg.current_inode = current_inode;
+    msg.len = len;
+    if (Send(&msg, -FILE_SERVER) != 0) {
+        TracePrintf(1, "error sending message to server\n");
+        return ERROR;
+    }
+    // msg gets overwritten with reply after calling Send
+    return msg.num;
 }
 int Read(int fd, void *buf, int size) {
     (void) fd;

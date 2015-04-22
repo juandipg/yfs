@@ -5,6 +5,7 @@
 #include <string.h>
 #include "yfs.h"
 #include "hash_table.h"
+#include <comp421/iolib.h>
 
 #define LOADFACTOR 1.5
 
@@ -14,6 +15,7 @@ freeBlock *firstFreeBlock = NULL;
 int freeInodeCount = 0;
 int freeBlockCount = 0;
 int currentInode = ROOTINODE;
+
 
 queue *cacheInodeQueue;
 struct hash_table *inodeTable;
@@ -27,7 +29,7 @@ int blockCacheSize = 0;
 void 
 init() {
     TracePrintf(1, "inside init\n");
-    buildFreeInodeAndBlockLists();
+    
     TracePrintf(1, "1\n");
     cacheInodeQueue = malloc(sizeof(queue));
     TracePrintf(1, "2\n");
@@ -37,6 +39,7 @@ init() {
     TracePrintf(1, "4\n");
     blockTable = hash_table_create(LOADFACTOR, BLOCK_CACHESIZE);
     TracePrintf(1, "5\n");
+    buildFreeInodeAndBlockLists();
 }
 
 cacheItem *
@@ -47,13 +50,11 @@ removeItemFromFrontOfQueue(queue *queue)
         return NULL;
     }
     if (queue->firstItem->nextItem == NULL) {
-        TracePrintf(1, "Removing only proc from front of queue\n");
         queue->lastItem = NULL;
     }
     
     queue->firstItem->prevItem = NULL;
     queue->firstItem = queue->firstItem->nextItem;
-    TracePrintf(1, "item removed was: %d\n", firstItem->number);
     return firstItem;
 }
 
@@ -74,12 +75,10 @@ addItemToEndOfQueue(cacheItem *item, queue *queue)
 {
     // if the queue is empty
     if (queue->firstItem == NULL) {
-        TracePrintf(1, "Adding item %d to end of empty queue\n", item->number);
         item->nextItem = NULL;
         queue->lastItem = item;
         queue->firstItem = item;
     } else {    // if the queue is nonempty
-        TracePrintf(1, "Adding item %d to end of NONempty queue\n", item->number);
         queue->lastItem->nextItem = item;
         item->prevItem = queue->lastItem;
         queue->lastItem = item;
@@ -103,20 +102,23 @@ isEqual(char *path, char dirEntryName[]) {
 }
 
 void
-saveBlock(int blockNumber, void *block) {
+saveBlock(int blockNumber) {
     // mark the block as dirty
-    
-    // don't do this anymore
-    WriteSector(blockNumber, block);
+    void *block = getBlock(blockNumber);
+    (void)block;
+    cacheItem *blockItem = (cacheItem *)hash_table_lookup(blockTable, blockNumber);
+    blockItem->dirty = true;
 }
 
 void *
 getBlock(int blockNumber) {
+    //TracePrintf(1, "GETTING BLOCK #%d\n", blockNumber);
     // First check to see if Block is in the cache using hashmap
     // If it is, remove it from the middle of the block queue add it to the front
     // return the pointer to it
     cacheItem *blockItem = (cacheItem *)hash_table_lookup(blockTable, blockNumber);
     if (blockItem != NULL) {
+        //TracePrintf(1, "block was in cache\n");
         removeItemFromQueue(cacheBlockQueue, blockItem);
         addItemToEndOfQueue(blockItem, cacheBlockQueue);
         return blockItem->addr;
@@ -130,35 +132,51 @@ getBlock(int blockNumber) {
     if (blockCacheSize == BLOCK_CACHESIZE) {
         cacheItem *lruBlockItem = removeItemFromFrontOfQueue(cacheBlockQueue);
         int lruBlockNum = lruBlockItem->number;
+        WriteSector(lruBlockNum, lruBlockItem->addr);
+        blockCacheSize--;
         hash_table_remove(blockTable, lruBlockNum, NULL, NULL);
+        destroyCacheItem(lruBlockItem);
     }
     
     // allocate space for the new block, read it from disk 
     // Add the new block to the front of the LRU queue and add it to the hashmap
     // and then return the pointer to the new block
+    //TracePrintf(1, "block was NOT in cache\n");
     void *block = malloc(BLOCKSIZE);
+    ReadSector(blockNumber, block);
     cacheItem *newItem = malloc(sizeof(cacheItem));
     newItem->number = blockNumber;
     newItem->addr = block;
     newItem->dirty = false;
-    ReadSector(blockNumber, block);
+    
     addItemToEndOfQueue(newItem, cacheBlockQueue);
+    blockCacheSize++;
+    hash_table_insert(blockTable, blockNumber, newItem);
     return block;
 }
 
 void
 saveInode(int inodeNum) {
-    (void) inodeNum;
+    struct inode *inode = getInode(inodeNum);
+    (void)inode;
     // Lookup the inode ptr in the hashmap
+    cacheItem *inodeItem = (cacheItem *)hash_table_lookup(inodeTable, inodeNum);
     
     // mark the inode as dirty 
+    inodeItem->dirty = true;
 }
 
 struct inode*
-getInode(void *blockAddr,  int inodeNum) {
+getInode(int inodeNum) {
     // First, check to see if inode is in the cache using hashmap
     // If it is, remove it from the middle of the inode queue and add it to the front
     // return the pointer to the inode
+    cacheItem *nodeItem = (cacheItem *)hash_table_lookup(inodeTable, inodeNum);
+    if (nodeItem != NULL) {
+        removeItemFromQueue(cacheInodeQueue, nodeItem);
+        addItemToEndOfQueue(nodeItem, cacheInodeQueue);
+        return nodeItem->addr;
+    }
     
     // If it is not in the cache
     
@@ -169,23 +187,45 @@ getInode(void *blockAddr,  int inodeNum) {
     // get the correct address corresponding to this inode within that block
     // copy the contents of the lru inode into this address
     // call save block on that block
-    
+    if (inodeCacheSize == INODE_CACHESIZE) {
+        cacheItem *lruInode = removeItemFromFrontOfQueue(cacheInodeQueue);
+        int lruInodeNum = lruInode->number;
+        inodeCacheSize--;
+        hash_table_remove(inodeTable, lruInodeNum, NULL, NULL);
+        int lruBlockNum = (lruInodeNum / INODESPERBLOCK) + 1;
+        
+        void *lruBlock = getBlock(lruBlockNum);
+        void *inodeAddrInBlock = (lruBlock + (lruInodeNum - (lruBlockNum - 1) * INODESPERBLOCK) * INODESIZE);
+        
+        memcpy(inodeAddrInBlock, lruInode->addr, sizeof(struct inode));
+        saveBlock(lruBlockNum);
+        
+        destroyCacheItem(lruInode);
+    }
     
     // Get the block number corresponding to this new inode
+    int blockNum = (inodeNum / INODESPERBLOCK) + 1;
     
     // Get the block address for this inode
+    void *blockAddr = getBlock(blockNum);
     
     // Look up the inodes address within the block
-    // Copy the contents of the inode into a newly allocated inode
+    struct inode *newInodeAddrInBlock = (struct inode *)(blockAddr + (inodeNum - (blockNum - 1) * INODESPERBLOCK) * INODESIZE);
     
+    // Copy the contents of the inode into a newly allocated inode
+    struct inode *inodeCpy = malloc(sizeof(struct inode));
+    struct cacheItem *inodeItem = malloc(sizeof(struct cacheItem));
+    memcpy(inodeCpy, newInodeAddrInBlock, sizeof(struct inode));
+    inodeItem->addr = inodeCpy;
+    inodeItem->number = inodeNum;
     
     // Add this inode to the front of the LRU queue and add it to the hashmap
+    addItemToEndOfQueue(inodeItem, cacheInodeQueue);
+    inodeCacheSize++;
+    hash_table_insert(inodeTable, inodeNum, inodeItem);
     
     // return the address of the new inode
-    
-    
-    int blockNum = (inodeNum / INODESPERBLOCK) + 1;
-    return (blockAddr + (inodeNum - (blockNum - 1) * INODESPERBLOCK) * INODESIZE);
+    return inodeItem->addr;
 }
 
 void
@@ -232,7 +272,6 @@ getNthBlock(struct inode *inode, int n, bool allocateIfNeeded) {
         indirectBlock[n - NUM_DIRECT] = getNextFreeBlockNum();
     }
     int blockNum = indirectBlock[n - NUM_DIRECT];
-    free(indirectBlock);
     return blockNum;
 }
 
@@ -265,25 +304,20 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     TracePrintf(1, "inodeStartNumber = %d\n", inodeStartNumber);
     //Get inode corresponding to inodeStartNumber
     void *block = getBlockForInode(inodeStartNumber);
-    struct inode *inode = getInode(block, inodeStartNumber);
+    struct inode *inode = getInode(inodeStartNumber);
     if (inode->type == INODE_DIRECTORY) {
         // go get the directory entry in this directory
         // that has that name
         int blockNum;
         int offset = getDirectoryEntry(path, inodeStartNumber, &blockNum, false);
         if (offset != -1) {
-            free(block);
             block = getBlock(blockNum);
             struct dir_entry * dir_entry = (struct dir_entry *) ((char *) block + offset);
             nextInodeNumber = dir_entry->inum;
-            free(block);
         }
     } else if (inode->type == INODE_REGULAR) {
-        free(block);
         return ERROR;
     } else if (inode->type == INODE_SYMLINK) {
-        free(block);
-
         return ERROR;
     }
     char *nextPath = path;
@@ -294,8 +328,7 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     while (nextPath[0] != '/') {
         // base case
         if (nextPath[0] == '\0') {
-            block = getBlockForInode(nextInodeNumber);
-            inode = getInode(block, nextInodeNumber);
+            inode = getInode(nextInodeNumber);
             
             if (inode->type != INODE_SYMLINK) {
                 return nextInodeNumber;
@@ -308,8 +341,7 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
         nextPath += sizeof (char);
     }
     nextPath += sizeof (char);
-    block = getBlockForInode(nextInodeNumber);
-    inode = getInode(block, nextInodeNumber);
+    inode = getInode(nextInodeNumber);
     if (inode->type == INODE_SYMLINK) {
         int dataBlockNum = inode->direct[0];
         char *dataBlock = (char *)getBlock(dataBlockNum);
@@ -319,12 +351,9 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
         }
         nextInodeNumber = getInodeNumberForPath(dataBlock, inodeStartNumber);
         if (nextPath[0] == '\0') {
-            free(dataBlock);
             return nextInodeNumber;
         }
-        free(dataBlock);
     }
-    free(block);
     return getInodeNumberForPath(nextPath, nextInodeNumber);
 }
 
@@ -334,22 +363,15 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
  */
 void
 freeUpInode(int inodeNum) {
-    // number of inodes per block
-
-    void *block = getBlockForInode(inodeNum);
-    
     // get address of this inode 
-    struct inode *inode = getInode(block, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     
     // modify the type of inode to free
     inode->type = INODE_FREE;
-    // TODO: remove this free
-    free(block);
-    // add it to linked list
+
     addFreeInodeToList(inodeNum);
-    
-    // TODO mark inode as dirty
-    // TODO mark block as dirty
+
+    saveInode(inodeNum);
 }
 
 int
@@ -358,7 +380,7 @@ getNextFreeInodeNum() {
         return 0;
     }
     int inodeNum = firstFreeInode->inodeNumber;
-    struct inode *inode = getInode(&inodeNum, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     inode->reuse++;
     saveInode(inodeNum);
     firstFreeInode = firstFreeInode->next;
@@ -415,7 +437,7 @@ buildFreeInodeAndBlockLists() {
     while (inodeNum < header.num_inodes) {
         // for each inode, if it's free, add it to the free list
         for (; inodeNum < INODESPERBLOCK * blockNum; inodeNum++) {
-            struct inode *inode = getInode(block, inodeNum);
+            struct inode *inode = getInode(inodeNum);
             if (inode->type == INODE_FREE) {
                 addFreeInodeToList(inodeNum);
             } else {
@@ -428,7 +450,6 @@ buildFreeInodeAndBlockLists() {
             }
         }
         blockNum++;
-        free(block);
         block = getBlock(blockNum);
     }
     TracePrintf(1, "initialized free inode list with %d free inodes\n", 
@@ -445,18 +466,17 @@ buildFreeInodeAndBlockLists() {
     TracePrintf(1, "initialized free block list with %d free blocks\n", 
         freeBlockCount);
     
-    free(block);
 }
 
 void
-clearFile(struct inode *inode, int inodeNum, void *block) {
+clearFile(struct inode *inode, int inodeNum) {
     int i = 0;
     int blockNum;
     while ((blockNum = getNthBlock(inode, i++, false)) != 0) {
         addFreeBlockToList(blockNum);
     }
     inode->size = 0;
-    saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
+    saveInode(inodeNum);
     addFreeInodeToList(inodeNum);
 }
 
@@ -469,11 +489,8 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
     int freeEntryBlockNum = 0;
     void * currentBlock;
     struct dir_entry *currentEntry;
-    
-    int inodeBlockNumber = (inodeStartNumber / INODESPERBLOCK) + 1;
-    void *block = getBlock(inodeBlockNumber);
-    
-    struct inode *inode = getInode(block, inodeStartNumber);
+        
+    struct inode *inode = getInode(inodeStartNumber);
     int i = 0;
     int blockNum = getNthBlock(inode, i, false);
     int currBlockNum = 0;
@@ -498,7 +515,6 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
             currentEntry = (struct dir_entry *) ((char *) currentEntry + sizeof (struct dir_entry));
             totalSize += sizeof (struct dir_entry);
         }
-        free(currentBlock);
         if (isFound) {
             break;
         }
@@ -510,13 +526,11 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
 
     if (isFound) {
         int offset = (int)((char *)currentEntry - (char *)currentBlock);
-        free(block);
         return offset;
     } 
     if (createIfNeeded) {
         if (freeEntryBlockNum != 0) {
             *blockNumPtr = freeEntryBlockNum;
-            free(block);
             return freeEntryOffset;
         }
         if (inode->size % BLOCKSIZE == 0) {
@@ -527,18 +541,15 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
             inode->size += sizeof(struct dir_entry);
             struct dir_entry * newEntry = (struct dir_entry *) currentBlock;
             newEntry->inum = 0;
-            saveBlock(blockNum, currentBlock);
-            saveBlock(inodeBlockNumber, block);
+            saveBlock(blockNum);
+            saveInode(inodeStartNumber);
             *blockNumPtr = blockNum;
-            free(block);
-            free(currentBlock);
             return 0;
         } 
         inode->size += sizeof(struct dir_entry);
-        saveBlock(inodeBlockNumber, block);
+        saveInode(inodeStartNumber);
         *blockNumPtr = currBlockNum;
         int offset = (int)((char *)currentEntry - (char *)currentBlock);
-        free(block);
         return offset;
     }
     return -1;
@@ -623,13 +634,11 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
             return ERROR;
         }
         int inodeNum = dir_entry->inum;
-        void *block = getBlockForInode(inodeNum);
-        struct inode *inode = getInode(block, inodeNum);
-        clearFile(inode, inodeNum, block);
+        struct inode *inode = getInode(inodeNum);
+        clearFile(inode, inodeNum);
         
         // TODO have method to calculate block number?
-        saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
-        free(block);
+        saveInode(inodeNum);
         return inodeNum;
     }
     
@@ -645,19 +654,17 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
     if (inodeNumToSet == -1) {
         inodeNum = getNextFreeInodeNum();
         dir_entry->inum = inodeNum;
-        saveBlock(blockNum, block);
+        saveBlock(blockNum);
         block = getBlockForInode(inodeNum);
-        struct inode *inode = getInode(block, inodeNum);
+        struct inode *inode = getInode(inodeNum);
         inode->type = INODE_REGULAR;
         inode->size = 0;
         inode->nlink = 1;
-        saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
-        free(block);
+        saveInode(inodeNum);
         return inodeNum;
     } else {
         dir_entry->inum = inodeNumToSet;
-        saveBlock(blockNum, block);
-        free(block);
+        saveBlock(blockNum);
         return inodeNumToSet;
     }
 }
@@ -665,8 +672,7 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
 int
 yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
     (void)pid;
-    void *inodeBlock = getBlockForInode(inodeNum);
-    struct inode *inode = getInode(inodeBlock, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     
     if (byteOffset > inode->size) {
         return ERROR;
@@ -698,7 +704,6 @@ yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
         memcpy(buf, (char *)currentBlock + blockOffset, bytesToCopy);
         
         buf += bytesToCopy;
-        free(currentBlock);
         blockOffset = 0;
         bytesLeft -= bytesToCopy;
         bytesToCopy = BLOCKSIZE;
@@ -710,8 +715,7 @@ yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
 int 
 yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
     (void)pid;
-    void *inodeBlock = getBlockForInode(inodeNum);
-    struct inode *inode = getInode(inodeBlock, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     if (inode->type != INODE_REGULAR) {
         return ERROR;
     }
@@ -739,9 +743,8 @@ yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
         memcpy((char *)currentBlock + blockOffset, buf, bytesToCopy);
 
         buf += bytesToCopy;
-        saveBlock(blockNum, currentBlock);
+        saveBlock(blockNum);
         
-        free(currentBlock);
         blockOffset = 0;
         bytesLeft -= bytesToCopy;
         bytesToCopy = BLOCKSIZE;
@@ -750,8 +753,7 @@ yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
             inode->size = bytesWrittenSoFar + byteOffset;
         }
     }
-    int blockNumber = (inodeNum / INODESPERBLOCK) + 1;
-    saveBlock(blockNumber, inodeBlock);
+    saveInode(inodeNum);
     return returnVal;
 }
 
@@ -763,8 +765,7 @@ yfsLink(char *oldName, char *newName, int currentInode) {
     }
     
     int oldNameNodeNum = getInodeNumberForPath(oldName, currentInode);
-    void *oldNodeBlock = getBlockForInode(oldNameNodeNum);
-    struct inode *inode = getInode(oldNodeBlock, oldNameNodeNum);
+    struct inode *inode = getInode(oldNameNodeNum);
     if (inode->type == INODE_DIRECTORY || oldNameNodeNum == 0) {
         return ERROR;
     }
@@ -778,7 +779,7 @@ yfsLink(char *oldName, char *newName, int currentInode) {
     }
     inode->nlink++;
     TracePrintf(1, "just linked, new inode nlink count is: %d\n", inode->nlink);
-    saveBlock((oldNameNodeNum / INODESPERBLOCK) + 1, oldNodeBlock);
+    saveInode(oldNameNodeNum);
     
     return 0;
 }
@@ -798,8 +799,7 @@ yfsUnlink(char *pathname, int currentInode) {
     
     // Get the inode associated with the directory entry
     int inodeNum = dir_entry->inum;
-    void *inodeBlock = getBlockForInode(inodeNum);
-    struct inode *inode = getInode(inodeBlock, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     
     // Decrease nlinks by 1
     inode->nlink--;
@@ -807,14 +807,14 @@ yfsUnlink(char *pathname, int currentInode) {
     // If nlinks == 0, clear the file
     if (inode->nlink == 0) {
         TracePrintf(1, "about to clear the file!\n");
-        clearFile(inode, inodeNum, inodeBlock);
+        clearFile(inode, inodeNum);
     } 
     
-    saveBlock((inodeNum / INODESPERBLOCK) + 1, inodeBlock);
+    saveInode(inodeNum);
     
     // Set the inum to zero
     dir_entry->inum = 0;
-    saveBlock(blockNum, block);
+    saveBlock(blockNum);
     
     return 0;
 }
@@ -864,9 +864,9 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
     for (i = 0; filename[i] != '\0'; i++) {
         dir_entry->name[i] = filename[i];
     };
-    saveBlock(blockNum, block);
+    saveBlock(blockNum);
     block = getBlockForInode(inodeNum);
-    struct inode *inode = getInode(block, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     inode->type = INODE_SYMLINK;
     inode->size = sizeof(char) * strlen(oldname);
     inode->nlink = 1;
@@ -875,11 +875,9 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
     void *dataBlock = getBlock(inode->direct[0]);
     memcpy(dataBlock, oldname, strlen(oldname));
     
-    saveBlock(inode->direct[0], dataBlock);
-    free(dataBlock);
+    saveBlock(inode->direct[0]);
     
-    saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
-    free(block);
+    saveInode(inodeNum);
     return 0;
 }
 
@@ -894,8 +892,7 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
     if (symInodeNum == ERROR) {
         return ERROR;
     }
-    void *symInodeBlock = getBlockForInode(symInodeNum);
-    struct inode *symInode = getInode(symInodeBlock, symInodeNum);
+    struct inode *symInode = getInode(symInodeNum);
     
     int dataBlockNum = symInode->direct[0];
     char *dataBlock = (char *)getBlock(dataBlockNum);
@@ -939,10 +936,10 @@ yfsMkDir(char *pathname, int currentInode) {
     
     int inodeNum = getNextFreeInodeNum();
     dir_entry->inum = inodeNum;
-    saveBlock(blockNum, block);
+    saveBlock(blockNum);
     block = getBlockForInode(inodeNum);
     
-    struct inode *inode = getInode(block, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     inode->type = INODE_DIRECTORY;
     inode->size = 2 * sizeof (struct dir_entry);
     inode->nlink = 1;
@@ -960,10 +957,9 @@ yfsMkDir(char *pathname, int currentInode) {
     dir2->name[0] = '.';
     dir2->name[1] = '.';
     
-    saveBlock(firstDirectBlockNum, firstDirectBlock);
+    saveBlock(firstDirectBlockNum);
     
-    saveBlock((inodeNum / INODESPERBLOCK) + 1, block);
-    free(block);
+    saveInode(inodeNum);
     return 0;
 }
 
@@ -978,14 +974,13 @@ yfsRmDir(char *pathname, int currentInode) {
     if (inodeNum == ERROR) {
         return ERROR;
     }
-    void *inodeBlock = getBlockForInode(inodeNum);
-    struct inode *inode = getInode(inodeBlock, inodeNum);
+    struct inode *inode = getInode(inodeNum);
     
     if (inode->size > (int)(2*sizeof(struct dir_entry))) {
         return ERROR;
     }
     
-    clearFile(inode, inodeNum, inodeBlock);
+    clearFile(inode, inodeNum);
     
     
     char *filename;
@@ -1000,7 +995,7 @@ yfsRmDir(char *pathname, int currentInode) {
     
     // Set the inum to zero
     dir_entry->inum = 0;
-    saveBlock(blockNum, block);
+    saveBlock(blockNum);
     return 0;
 }
 
@@ -1015,12 +1010,37 @@ yfsChDir(char *pathname, int currentInode) {
 }
 
 int
+yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
+    int inodeNum = getInodeNumberForPath(pathname, currentInode);
+    if (inodeNum == 0) {
+        return ERROR;
+    }
+    struct inode *inode = getInode(inodeNum);
+    
+    statbuf->inum = inodeNum;
+    statbuf->nlink = inode->nlink;
+    statbuf->size = inode->size;
+    statbuf->type = inode->type;
+    
+    return 0;
+}
+
+int
 main(int argc, char **argv)
 {
-    (void) argc;
-    (void) argv;
     init();
-    TracePrintf(1, "I'm running!\n");
+    
+    if (argc > 1) {
+    int pid = Fork();
+        if (pid == 0) {
+            Exec(argv[1], argv + 1);
+        }
+    }
     
     int i;
     char hello[612];
@@ -1070,7 +1090,22 @@ main(int argc, char **argv)
     int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
     TracePrintf(1, "inode num of /a/b/c = %d\n", inode2);
     
+    struct Stat *stat = malloc(sizeof(struct Stat));
     
+    int statresult = yfsStat("/a/b", ROOTINODE, stat);
+    TracePrintf(1, "stat result = %d\n", statresult);
+    TracePrintf(1, "stat->inum = %d\n", stat->inum);
+    TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
+    TracePrintf(1, "stat->size = %d\n", stat->size);
+    TracePrintf(1, "stat->type = %d\n", stat->type);
+    
+    
+    statresult = yfsStat("/f/g/h", ROOTINODE, stat);
+    TracePrintf(1, "stat result = %d\n", statresult);
+    TracePrintf(1, "h stat->inum = %d\n", stat->inum);
+    TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);
+    TracePrintf(1, "h stat->size = %d\n", stat->size);
+    TracePrintf(1, "h stat->type = %d\n", stat->type);
     
 //    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
 //    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);

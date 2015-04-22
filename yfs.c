@@ -1,11 +1,12 @@
-#include <stdbool.h>
 #include <comp421/filesystem.h>
 #include <comp421/yalnix.h>
 #include <stdlib.h>
 #include <string.h>
 #include "yfs.h"
 #include "hash_table.h"
+#include "message.h"
 #include <comp421/iolib.h>
+
 
 #define LOADFACTOR 1.5
 
@@ -32,14 +33,24 @@ init() {
     
     TracePrintf(1, "1\n");
     cacheInodeQueue = malloc(sizeof(queue));
+    cacheInodeQueue->firstItem = NULL;
+    cacheInodeQueue->lastItem = NULL;
+    
     TracePrintf(1, "2\n");
     cacheBlockQueue = malloc(sizeof(queue));
+    cacheBlockQueue->firstItem = NULL;
+    cacheBlockQueue->lastItem = NULL;
     TracePrintf(1, "3\n");
     inodeTable = hash_table_create(LOADFACTOR, INODE_CACHESIZE);
     TracePrintf(1, "4\n");
     blockTable = hash_table_create(LOADFACTOR, BLOCK_CACHESIZE);
     TracePrintf(1, "5\n");
     buildFreeInodeAndBlockLists();
+    
+    if (Register(FILE_SERVER) != 0) {
+        TracePrintf(1, "error registering file server as a service\n");
+        Exit(1);
+    };
 }
 
 cacheItem *
@@ -76,9 +87,11 @@ addItemToEndOfQueue(cacheItem *item, queue *queue)
     // if the queue is empty
     if (queue->firstItem == NULL) {
         item->nextItem = NULL;
+        item->prevItem = NULL;
         queue->lastItem = item;
         queue->firstItem = item;
     } else {    // if the queue is nonempty
+        TracePrintf(1, "Adding item #%d to queue\n", item->number);
         queue->lastItem->nextItem = item;
         item->prevItem = queue->lastItem;
         queue->lastItem = item;
@@ -107,6 +120,7 @@ saveBlock(int blockNumber) {
     void *block = getBlock(blockNumber);
     (void)block;
     cacheItem *blockItem = (cacheItem *)hash_table_lookup(blockTable, blockNumber);
+    TracePrintf(1, "saving block #%d\n", blockNumber);
     blockItem->dirty = true;
 }
 
@@ -121,6 +135,7 @@ getBlock(int blockNumber) {
         //TracePrintf(1, "block was in cache\n");
         removeItemFromQueue(cacheBlockQueue, blockItem);
         addItemToEndOfQueue(blockItem, cacheBlockQueue);
+        
         return blockItem->addr;
     }
     
@@ -160,6 +175,7 @@ saveInode(int inodeNum) {
     struct inode *inode = getInode(inodeNum);
     (void)inode;
     // Lookup the inode ptr in the hashmap
+    TracePrintf(1, "saving inode #%d\n", inodeNum);
     cacheItem *inodeItem = (cacheItem *)hash_table_lookup(inodeTable, inodeNum);
     
     // mark the inode as dirty 
@@ -1031,118 +1047,165 @@ yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
 }
 
 int
+yfsSync(void) {
+    // First sync all dirty blocks
+    cacheItem *currBlockItem = cacheBlockQueue->firstItem;
+    while (currBlockItem != NULL) {
+        TracePrintf(1, "currBlockItem->num = %d\n", currBlockItem->number);
+        if (currBlockItem->dirty) {
+            //write this block back to disk
+            TracePrintf(1, "about to write sector for block #%d\n", currBlockItem->number);
+
+            WriteSector(currBlockItem->number, currBlockItem->addr);
+        }
+        currBlockItem = currBlockItem->nextItem;
+        if (currBlockItem == NULL) {
+            TracePrintf(1, "WAS NULL :-(\n");
+        }
+    }
+    
+    // Now sync all dirty inodes
+    cacheItem *currInodeItem = cacheInodeQueue->firstItem;
+    while (currInodeItem != NULL) {
+        if (currInodeItem->dirty) {
+            int inodeNum = currInodeItem->number;
+            int blockNum = (inodeNum / INODESPERBLOCK) + 1;
+
+            void *block = getBlock(blockNum);
+            void *inodeAddrInBlock = (block + (inodeNum - (blockNum - 1) * INODESPERBLOCK) * INODESIZE);
+
+            memcpy(inodeAddrInBlock, currInodeItem->addr, sizeof(struct inode));
+            TracePrintf(1, "about to write sector for inode #%d in block #%d\n", inodeNum, blockNum);
+            WriteSector(blockNum, block);
+        }
+        currInodeItem = currInodeItem->nextItem;
+    }
+    return 0;
+ }
+
+int
 main(int argc, char **argv)
 {
+    (void)argc;
+    (void) argv;
     init();
     
-    if (argc > 1) {
+    //if (argc > 1) {
     int pid = Fork();
-        if (pid == 0) {
-            Exec(argv[1], argv + 1);
+    if (pid == 0) {
+        int returnVal = Create("/a/i.txt");
+        TracePrintf(1, "Successfully returned from Create with val: %d\n", returnVal);
+        //Exec(argv[1], argv + 1);
+    } else {
+        for (;;) {
+            processRequest();
         }
     }
+    //}
     
-    int i;
-    char hello[612];
-    for (i = 0; i < 612; i++) 
-    {
-        if (i % 2 == 0) {
-            hello[i] = '2';
-        } else {
-            hello[i] = '1';
-        }
-    }
-    hello[610] = 'a';
-    hello[611] = 'b';
-    
-    int result = yfsMkDir("/a", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsSymLink("d/e", "/a/b", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/a/d", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsSymLink("/f/g/h", "/a/d/e", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f/g", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f/g/h", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f/g/h/j", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    result = yfsSymLink("j", "/f/g/h/c", ROOTINODE);
-    TracePrintf(1, "mkdir result = %d\n", result);
-    
-    int inode1 = getInodeNumberForPath("f/g/h/j", ROOTINODE);
-    TracePrintf(1, "inode num of /f/g/h/j = %d\n", inode1);
-    
-    int inode3 = getInodeNumberForPath("f", ROOTINODE);
-    TracePrintf(1, "f inode = %d\n", inode3);
-    int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
-    TracePrintf(1, "inode num of /a/b/c = %d\n", inode2);
-    
-    struct Stat *stat = malloc(sizeof(struct Stat));
-    
-    int statresult = yfsStat("/a/b", ROOTINODE, stat);
-    TracePrintf(1, "stat result = %d\n", statresult);
-    TracePrintf(1, "stat->inum = %d\n", stat->inum);
-    TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
-    TracePrintf(1, "stat->size = %d\n", stat->size);
-    TracePrintf(1, "stat->type = %d\n", stat->type);
-    
-    
-    statresult = yfsStat("/f/g/h", ROOTINODE, stat);
-    TracePrintf(1, "stat result = %d\n", statresult);
-    TracePrintf(1, "h stat->inum = %d\n", stat->inum);
-    TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);
-    TracePrintf(1, "h stat->size = %d\n", stat->size);
-    TracePrintf(1, "h stat->type = %d\n", stat->type);
-    
-//    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
-//    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);
+//    int i;
+//    char hello[612];
+//    for (i = 0; i < 612; i++) 
+//    {
+//        if (i % 2 == 0) {
+//            hello[i] = '2';
+//        } else {
+//            hello[i] = '1';
+//        }
+//    }
+//    hello[610] = 'a';
+//    hello[611] = 'b';
 //    
-//    inodeNum = getInodeNumberForPath("1/2", ROOTINODE);
-//    TracePrintf(1, "inodenum of 1/2 = %d\n", inodeNum);
+//    int result = yfsMkDir("/a", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
 //    
-//    inodeNum = getInodeNumberForPath("1/3", ROOTINODE);
-//    TracePrintf(1, "inodenum of 1/3 = %d\n", inodeNum);
-    
-    
-    
-//    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
-//    int writeResult = yfsWrite(20, hello, 612, 0, 0);
-//    TracePrintf(1, "Bytes written = %d\n", writeResult);
-//    int writeResult2 = yfsWrite(20, writeMe, 26, 500, 0);
-//    TracePrintf(1, "Bytes written = %d\n", writeResult2);
+//    result = yfsMkDir("/f", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
 //    
-//    int linkResult = yfsLink("/a/b/x.txt", "/a/b/z.txt", ROOTINODE);
-//    TracePrintf(1, "Link result = %d\n", linkResult);
+//    result = yfsSymLink("d/e", "/a/b", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
 //    
-//    int unlinkResult = yfsUnlink("/a/b/z.txt", ROOTINODE);
-//    TracePrintf(1, "unlink result = %d\n", unlinkResult);
+//    result = yfsMkDir("/a/d", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
 //    
-//    int ztxtInode = getInodeNumberForPath("a/b/z.txt", ROOTINODE);
+//    result = yfsSymLink("/f/g/h", "/a/d/e", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
 //    
-//    char *readMe = malloc(612*sizeof(char));
-//    int readResult = yfsRead(ztxtInode, readMe, 638, 0, 0);
-//    TracePrintf(1, "Bytes read = %d\n", readResult);
-//    TracePrintf(1, "String read = %s\n", readMe);
+//    result = yfsMkDir("/f/g", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
 //    
-//    int unlinkResult2 = yfsUnlink("/a/b/x.txt", ROOTINODE);
-//    TracePrintf(1, "unlink result = %d\n", unlinkResult2);
+//    result = yfsMkDir("/f/g/h", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
 //    
-//    char *readMe2 = malloc(612*sizeof(char));
-//    readResult = yfsRead(20, readMe2, 638, 0, 0);
-//    TracePrintf(1, "Bytes read = %d\n", readResult);
-//    TracePrintf(1, "String read = %s\n", readMe2);
+//    result = yfsMkDir("/f/g/h/j", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    result = yfsSymLink("j", "/f/g/h/c", ROOTINODE);
+//    TracePrintf(1, "mkdir result = %d\n", result);
+//    
+//    int inode1 = getInodeNumberForPath("f/g/h/j", ROOTINODE);
+//    TracePrintf(1, "inode num of /f/g/h/j = %d\n", inode1);
+//    
+//    int inode3 = getInodeNumberForPath("f", ROOTINODE);
+//    TracePrintf(1, "f inode = %d\n", inode3);
+//    int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
+//    TracePrintf(1, "inode num of /a/b/c = %d\n", inode2);
+//    
+//    struct Stat *stat = malloc(sizeof(struct Stat));
+//    
+//    int statresult = yfsStat("/a/b", ROOTINODE, stat);
+//    TracePrintf(1, "stat result = %d\n", statresult);
+//    TracePrintf(1, "stat->inum = %d\n", stat->inum);
+//    TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
+//    TracePrintf(1, "stat->size = %d\n", stat->size);
+//    TracePrintf(1, "stat->type = %d\n", stat->type);
+//    
+//    
+//    statresult = yfsStat("/f/g/h", ROOTINODE, stat);
+//    TracePrintf(1, "stat result = %d\n", statresult);
+//    TracePrintf(1, "h stat->inum = %d\n", stat->inum);
+//    TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);
+//    TracePrintf(1, "h stat->size = %d\n", stat->size);
+//    TracePrintf(1, "h stat->type = %d\n", stat->type);
+//    
+//    yfsSync();
+//    
+////    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
+////    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);
+////    
+////    inodeNum = getInodeNumberForPath("1/2", ROOTINODE);
+////    TracePrintf(1, "inodenum of 1/2 = %d\n", inodeNum);
+////    
+////    inodeNum = getInodeNumberForPath("1/3", ROOTINODE);
+////    TracePrintf(1, "inodenum of 1/3 = %d\n", inodeNum);
+//    
+//    
+//    
+////    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
+////    int writeResult = yfsWrite(20, hello, 612, 0, 0);
+////    TracePrintf(1, "Bytes written = %d\n", writeResult);
+////    int writeResult2 = yfsWrite(20, writeMe, 26, 500, 0);
+////    TracePrintf(1, "Bytes written = %d\n", writeResult2);
+////    
+////    int linkResult = yfsLink("/a/b/x.txt", "/a/b/z.txt", ROOTINODE);
+////    TracePrintf(1, "Link result = %d\n", linkResult);
+////    
+////    int unlinkResult = yfsUnlink("/a/b/z.txt", ROOTINODE);
+////    TracePrintf(1, "unlink result = %d\n", unlinkResult);
+////    
+////    int ztxtInode = getInodeNumberForPath("a/b/z.txt", ROOTINODE);
+////    
+////    char *readMe = malloc(612*sizeof(char));
+////    int readResult = yfsRead(ztxtInode, readMe, 638, 0, 0);
+////    TracePrintf(1, "Bytes read = %d\n", readResult);
+////    TracePrintf(1, "String read = %s\n", readMe);
+////    
+////    int unlinkResult2 = yfsUnlink("/a/b/x.txt", ROOTINODE);
+////    TracePrintf(1, "unlink result = %d\n", unlinkResult2);
+////    
+////    char *readMe2 = malloc(612*sizeof(char));
+////    readResult = yfsRead(20, readMe2, 638, 0, 0);
+////    TracePrintf(1, "Bytes read = %d\n", readResult);
+////    TracePrintf(1, "String read = %s\n", readMe2);
     return (0);
 }

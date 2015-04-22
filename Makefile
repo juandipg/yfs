@@ -35,8 +35,8 @@ ALL = yfs iolib.a
 #	YFS server, and YFS_SRCS should  be a list of the corresponding
 #	source files that make up your server.
 #
-YFS_OBJS = yfs.o hash_table.o message.o
-YFS_SRCS = yfs.c hash_table.c message.c
+YFS_OBJS = yfs.o hash_table.o message.o iolib.o
+YFS_SRCS = yfs.c hash_table.c message.c iolib.c
 
 #
 #	You must also modify the IOLIB_OBJS and IOLIB_SRCS definitions
@@ -44,8 +44,8 @@ YFS_SRCS = yfs.c hash_table.c message.c
 #	your YFS library, and IOLIB_SRCS should  be a list of the
 #	corresponding source files that make up your library.
 #
-IOLIB_OBJS = iolib.o
-IOLIB_SRCS = iolib.c
+IOLIB_OBJS = iolib.o message.o
+IOLIB_SRCS = iolib.c message.c
 
 #
 #	You should not have to modify anything else in this Makefile

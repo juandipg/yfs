@@ -47,7 +47,8 @@ getPathFromProcess(int pid, char *pathname, int len)
         return NULL;
     }
     if (CopyFrom(pid, local_pathname, pathname, len) != 0) {
-        TracePrintf(1, "error copying from pid %d\n", pid);
+        TracePrintf(1, "error copying %d bytes from %p in pid %d to %p locally\n", 
+                len, pathname, pid, local_pathname);
         return NULL;
     }
     return local_pathname;

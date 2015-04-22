@@ -65,3 +65,5 @@ struct message_link {
     int old_len;
     int new_len;
 };
+
+void processRequest();

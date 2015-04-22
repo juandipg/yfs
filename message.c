@@ -2,10 +2,15 @@
  * Interaction between yfs and user library is done here
  */
 #include <stdlib.h>
+#include <comp421/filesystem.h>
+#include <comp421/yalnix.h>
 #include "message.h"
+#include "yfs.h"
 
 // TODO: move this to yfs.h
 #define CREATE_NEW -1
+
+static char * getPathFromProcess(int pid, char *pathname, int len);
 
 void
 processRequest()
@@ -33,7 +38,7 @@ processRequest()
     }
 }
 
-char *
+static char *
 getPathFromProcess(int pid, char *pathname, int len)
 {
     char *local_pathname = malloc(len * sizeof (char));

@@ -29,22 +29,15 @@ int blockCacheSize = 0;
 
 void 
 init() {
-    TracePrintf(1, "inside init\n");
-    
-    TracePrintf(1, "1\n");
     cacheInodeQueue = malloc(sizeof(queue));
     cacheInodeQueue->firstItem = NULL;
     cacheInodeQueue->lastItem = NULL;
     
-    TracePrintf(1, "2\n");
     cacheBlockQueue = malloc(sizeof(queue));
     cacheBlockQueue->firstItem = NULL;
     cacheBlockQueue->lastItem = NULL;
-    TracePrintf(1, "3\n");
     inodeTable = hash_table_create(LOADFACTOR, INODE_CACHESIZE);
-    TracePrintf(1, "4\n");
     blockTable = hash_table_create(LOADFACTOR, BLOCK_CACHESIZE);
-    TracePrintf(1, "5\n");
     buildFreeInodeAndBlockLists();
     
     if (Register(FILE_SERVER) != 0) {
@@ -91,7 +84,7 @@ addItemToEndOfQueue(cacheItem *item, queue *queue)
         queue->lastItem = item;
         queue->firstItem = item;
     } else {    // if the queue is nonempty
-        TracePrintf(1, "Adding item #%d to queue\n", item->number);
+        TracePrintf(2, "Adding item #%d to queue\n", item->number);
         queue->lastItem->nextItem = item;
         item->prevItem = queue->lastItem;
         queue->lastItem = item;
@@ -120,7 +113,7 @@ saveBlock(int blockNumber) {
     void *block = getBlock(blockNumber);
     (void)block;
     cacheItem *blockItem = (cacheItem *)hash_table_lookup(blockTable, blockNumber);
-    TracePrintf(1, "saving block #%d\n", blockNumber);
+    TracePrintf(2, "saving block #%d\n", blockNumber);
     blockItem->dirty = true;
 }
 
@@ -175,7 +168,7 @@ saveInode(int inodeNum) {
     struct inode *inode = getInode(inodeNum);
     (void)inode;
     // Lookup the inode ptr in the hashmap
-    TracePrintf(1, "saving inode #%d\n", inodeNum);
+    TracePrintf(2, "saving inode #%d\n", inodeNum);
     cacheItem *inodeItem = (cacheItem *)hash_table_lookup(inodeTable, inodeNum);
     
     // mark the inode as dirty 
@@ -316,8 +309,7 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     //get the inode number for the first file in path 
     // ex: if path is "/a/b/c.txt" get the indoe # for "a"
     int nextInodeNumber = 0;
-    TracePrintf(1, "path = %s\n", path);
-    TracePrintf(1, "inodeStartNumber = %d\n", inodeStartNumber);
+    TracePrintf(2, "inodeStartNumber = %d\n", inodeStartNumber);
     //Get inode corresponding to inodeStartNumber
     void *block = getBlockForInode(inodeStartNumber);
     struct inode *inode = getInode(inodeStartNumber);
@@ -632,7 +624,9 @@ yfsOpen(char *pathname, int currentInode) {
 
 int
 yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
-
+    if (pathname == NULL) {
+        return ERROR;
+    }
     char *filename;
     int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
     // Search all directory entries of that inode for the file name to create

@@ -25,10 +25,9 @@ processRequest()
     } else if (msg_rcv.num == YFS_CREATE) {
         struct message_path * msg = (struct message_path *) &msg_rcv;
         char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
-        if (pathname == NULL) {
-            return;
-        }
+        // the return value can be error, which should be sent as the reply
         return_value = yfsCreate(pathname, msg->current_inode, CREATE_NEW);
+        free(pathname);
     }
     
     struct message_generic msg_rply;
@@ -42,7 +41,7 @@ static char *
 getPathFromProcess(int pid, char *pathname, int len)
 {
     char *local_pathname = malloc(len * sizeof (char));
-    if (pathname == NULL) {
+    if (local_pathname == NULL) {
         TracePrintf(1, "error allocating memory for pathname\n");
         return NULL;
     }

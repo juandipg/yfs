@@ -23,6 +23,7 @@ getLenForPath(char *pathname)
         }
     }
     if (i == 0 || i == MAXPATHNAMELEN) {
+        TracePrintf(1, "invalid pathname\n");
         return ERROR;
     }
     return i + 1;
@@ -54,12 +55,32 @@ int
 removeFile(int fd)
 {
     if (fd < 0 || fd >= MAX_OPEN_FILES
-            || file_table[fd] == NULL) {
+            || file_table[fd] == NULL) 
+    {
         return ERROR;
     }
     free(file_table[fd]);
     file_table[fd] = NULL;
     return 0;
+}
+
+struct message_path *
+createPathMessage(int operation, char *pathname)
+{
+    int len = getLenForPath(pathname);
+    if (len == ERROR) {
+        return NULL;
+    }
+    struct message_path * msg = malloc(sizeof(struct message_path));
+    if (msg == NULL) {
+        TracePrintf(1, "error allocating space for path message\n");
+        return NULL;
+    }
+    msg->num = operation;
+    msg->current_inode = current_inode;
+    msg->pathname = pathname;
+    msg->len = len;
+    return msg;
 }
 
 int
@@ -79,24 +100,21 @@ Close(int fd)
 int
 Create(char *pathname)
 {
-    int len = getLenForPath(pathname);
-    if (len == ERROR) {
+    // TODO: store message in the stack instead?
+    struct message_path * msg = createPathMessage(YFS_CREATE, pathname);
+    if (msg == NULL) {
         return ERROR;
     }
-    struct message_path msg;
-    msg.num = YFS_CREATE;
-    msg.current_inode = current_inode;
-    msg.pathname = pathname;
-    msg.len = len;
-    if (Send(&msg, -FILE_SERVER) != 0) {
+    if (Send(msg, -FILE_SERVER) != 0) {
         TracePrintf(1, "error sending message to server\n");
+        free(msg);
         return ERROR;
     }
     // msg gets overwritten with reply message after return from Send
-    // if return value is error, return error
-    int inodenum = msg.num;
+    int inodenum = msg->num;
+    free(msg);
     if (inodenum == ERROR) {
-        TracePrintf(1, "error received from server\n");
+        TracePrintf(1, "received error from server\n");
         return ERROR;
     }
     // try to add a file to the array and return fd or error

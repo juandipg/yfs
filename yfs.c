@@ -1114,9 +1114,6 @@ yfsSync(void) {
             WriteSector(currBlockItem->number, currBlockItem->addr);
         }
         currBlockItem = currBlockItem->nextItem;
-        if (currBlockItem == NULL) {
-            TracePrintf(1, "WAS NULL :-(\n");
-        }
     }
     
     // Now sync all dirty inodes

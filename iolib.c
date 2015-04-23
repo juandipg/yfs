@@ -161,8 +161,11 @@ Link(char *oldname, char *newname)
 int
 Unlink(char *pathname)
 {
-    (void) pathname;
-    return 0;
+    int code = sendPathMessage(YFS_UNLINK, pathname);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int
@@ -185,7 +188,6 @@ ReadLink(char *pathname, char *buf, int len)
 int
 MkDir(char *pathname)
 {
-    (void) pathname;
     int code = sendPathMessage(YFS_MKDIR, pathname);
     if (code == ERROR) {
         TracePrintf(1, "received error from server\n");
@@ -196,14 +198,22 @@ MkDir(char *pathname)
 int
 RmDir(char *pathname)
 {
-    (void) pathname;
-    return 0;
+    int code = sendPathMessage(YFS_RMDIR, pathname);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int
 ChDir(char *pathname)
 {
-    (void) pathname;
+    int inodenum = sendPathMessage(YFS_CHDIR, pathname);
+    if (inodenum == ERROR) {
+        TracePrintf(1, "received error from server\n");
+        return ERROR;
+    }
+    current_inode = inodenum;
     return 0;
 }
 

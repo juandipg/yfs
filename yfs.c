@@ -1051,8 +1051,11 @@ yfsChDir(char *pathname, int currentInode) {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
-    
-    return getInodeNumberForPath(pathname, currentInode);
+    int inode = getInodeNumberForPath(pathname, currentInode);
+    if (inode == 0) {
+        return ERROR;
+    }
+    return inode;
 }
 
 int

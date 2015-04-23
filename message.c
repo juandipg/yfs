@@ -43,7 +43,10 @@ processRequest()
     } else if (msg_rcv.num == YFS_LINK) {
 
     } else if (msg_rcv.num == YFS_UNLINK) {
-
+        struct message_path * msg = (struct message_path *) &msg_rcv;
+        char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
+        return_value = yfsUnlink(pathname, msg->current_inode);
+        free(pathname);
     } else if (msg_rcv.num == YFS_SYMLINK) {
 
     } else if (msg_rcv.num == YFS_READLINK) {
@@ -54,9 +57,15 @@ processRequest()
         return_value = yfsMkDir(pathname, msg->current_inode);
         free(pathname);
     } else if (msg_rcv.num == YFS_RMDIR) {
-
+        struct message_path * msg = (struct message_path *) &msg_rcv;
+        char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
+        return_value = yfsRmDir(pathname, msg->current_inode);
+        free(pathname);
     } else if (msg_rcv.num == YFS_CHDIR) {
-
+        struct message_path * msg = (struct message_path *) &msg_rcv;
+        char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
+        return_value = yfsChDir(pathname, msg->current_inode);
+        free(pathname);
     } else if (msg_rcv.num == YFS_STAT) {
 
     } else if (msg_rcv.num == YFS_SYNC) {

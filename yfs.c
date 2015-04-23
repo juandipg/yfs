@@ -1116,6 +1116,7 @@ yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
 
 int
 yfsSync(void) {
+    TracePrintf(1, "About to sync all dirty blocks and inodes\n");
     // First sync all dirty blocks
     cacheItem *currBlockItem = cacheBlockQueue->firstItem;
     while (currBlockItem != NULL) {
@@ -1142,8 +1143,16 @@ yfsSync(void) {
         }
         currInodeItem = currInodeItem->nextItem;
     }
+    TracePrintf(1, "Done syncing\n");
     return 0;
  }
+
+int
+yfsShutdown(void) {
+    yfsSync();
+    TracePrintf(1, "About to shutdown the YFS file system server\n");
+    Exit(0);
+}
 
 int
 main(int argc, char **argv)
@@ -1227,7 +1236,8 @@ main(int argc, char **argv)
 //    TracePrintf(1, "h stat->size = %d\n", stat->size);
 //    TracePrintf(1, "h stat->type = %d\n", stat->type);
     
-    yfsSync();
+    //yfsSync();
+    yfsShutdown();
     
 //    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
 //    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);

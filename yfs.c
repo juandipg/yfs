@@ -617,6 +617,7 @@ getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
         i++;
     }
     
+    TracePrintf(1, "returning current inode %d lastslash at %d\n", currentInode, lastSlashIndex);
     if (lastSlashIndex != 0) {
         char path[lastSlashIndex + 1];
         for (i = 0; i < lastSlashIndex; i++) {
@@ -720,7 +721,9 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
 
 int
 yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
-    (void)pid;
+    if (buf == NULL || size < 0 || byteOffset < 0 || inodeNum <= 0) {
+        return ERROR;
+    }
     struct inode *inode = getInode(inodeNum);
     
     if (byteOffset > inode->size) {
@@ -750,7 +753,11 @@ yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
             bytesToCopy = bytesLeft;
         }
         
-        memcpy(buf, (char *)currentBlock + blockOffset, bytesToCopy);
+        if (CopyTo(pid, buf, (char *)currentBlock + blockOffset, bytesToCopy) == ERROR)
+        {
+            TracePrintf(1, "error copying %d bytes to pid %d\n", bytesToCopy, pid);
+            return ERROR;
+        }
         
         buf += bytesToCopy;
         blockOffset = 0;
@@ -763,7 +770,7 @@ yfsRead(int inodeNum, void *buf, int size, int byteOffset, int pid) {
 
 int 
 yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
-    (void)pid;
+    
     struct inode *inode = getInode(inodeNum);
     if (inode->type != INODE_REGULAR) {
         return ERROR;
@@ -789,7 +796,11 @@ yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
             bytesToCopy = bytesLeft;
         }
         
-        memcpy((char *)currentBlock + blockOffset, buf, bytesToCopy);
+        if (CopyFrom(pid, (char *)currentBlock + blockOffset, buf, bytesToCopy) == ERROR)
+        {
+            TracePrintf(1, "error copying %d bytes from pid %d\n", bytesToCopy, pid);
+            return ERROR;
+        }
 
         buf += bytesToCopy;
         saveBlock(blockNum);
@@ -1137,7 +1148,7 @@ yfsSync(void) {
 int
 main(int argc, char **argv)
 {
-    (void)argc;
+    (void) argc;
     (void) argv;
     init();
 

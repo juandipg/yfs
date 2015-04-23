@@ -13,9 +13,14 @@ struct open_file * file_table[MAX_OPEN_FILES] = {NULL};
 int files_open = 0;
 int current_inode = ROOTINODE;
 
+struct open_file * getFile(int fd);
+
 static int
 getLenForPath(char *pathname)
 {
+    if (pathname == NULL) {
+        return ERROR;
+    }
     int i;
     for (i = 0; i < MAXPATHNAMELEN; i++) {
         if (pathname[i] == '\0') {
@@ -54,14 +59,23 @@ addFile(int inodenum)
 static int
 removeFile(int fd)
 {
-    if (fd < 0 || fd >= MAX_OPEN_FILES
-            || file_table[fd] == NULL) 
-    {
+    struct open_file * file = getFile(fd);
+    if (file == NULL) {
         return ERROR;
     }
-    free(file_table[fd]);
+    free(file);
     file_table[fd] = NULL;
     return 0;
+}
+
+struct open_file *
+getFile(int fd)
+{
+    if (fd < 0 || fd >= MAX_OPEN_FILES) 
+    {
+        return NULL;
+    }
+    return file_table[fd];
 }
 
 static int
@@ -86,9 +100,35 @@ sendPathMessage(int operation, char *pathname)
         return ERROR;
     }
     // msg gets overwritten with reply message after return from Send
-    int inodenum = msg->num;
+    int code = msg->num;
     free(msg);
-    return inodenum;
+    return code;
+}
+
+static int
+sendFileMessage(int operation, int inodenum, void *buf, int size, int offset)
+{
+    if (size < 0 || buf == NULL) {
+        return ERROR;
+    }
+    struct message_file * msg = malloc(sizeof(struct message_file));
+    if (msg == NULL) {
+        TracePrintf(1, "error allocating space for file message\n");
+        return ERROR;
+    }
+    msg->num = operation;
+    msg->inodenum = inodenum;
+    msg->buf = buf;
+    msg->size = size;
+    msg->offset = offset;
+    if (Send(msg, -FILE_SERVER) != 0) { // TODO: factor this out to a sendMessage() method?
+        TracePrintf(1, "error sending message to server\n");
+        free(msg);
+        return ERROR;
+    }
+    int code = msg->num;
+    free(msg);
+    return code;
 }
 
 int
@@ -126,19 +166,33 @@ Create(char *pathname)
 int
 Read(int fd, void *buf, int size)
 {
-    (void) fd;
-    (void) buf;
-    (void) size;
-    return 0;
+    struct open_file * file = getFile(fd);
+    if (file == NULL) {
+        return ERROR;
+    }
+    int bytes = sendFileMessage(YFS_READ, file->inodenum, buf, size, file->position);
+    if (bytes == ERROR) {
+        TracePrintf(1, "received error from server\n");
+        return ERROR;
+    }
+    file->position += bytes;
+    return bytes;
 }
 
 int
 Write(int fd, void *buf, int size)
 {
-    (void) fd;
-    (void) buf;
-    (void) size;
-    return 0;
+    struct open_file * file = getFile(fd);
+    if (file == NULL) {
+        return ERROR;
+    }
+    int bytes = sendFileMessage(YFS_WRITE, file->inodenum, buf, size, file->position);
+    if (bytes == ERROR) {
+        TracePrintf(1, "received error from server\n");
+        return ERROR;
+    }
+    file->position += bytes;
+    return bytes;
 }
 
 int

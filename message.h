@@ -47,7 +47,7 @@ struct message_path {
  */
 struct message_file {
     int num;
-    int inode;
+    int inodenum;
     void *buf;
     int size;
     int offset;

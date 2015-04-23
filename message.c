@@ -35,9 +35,11 @@ processRequest()
         return_value = yfsCreate(pathname, msg->current_inode, CREATE_NEW);
         free(pathname);
     } else if (msg_rcv.num == YFS_READ) {
-        
+        struct message_file * msg = (struct message_file *) &msg_rcv;
+        return_value = yfsRead(msg->inodenum, msg->buf, msg->size, msg->offset, pid);
     } else if (msg_rcv.num == YFS_WRITE) {
-
+        struct message_file * msg = (struct message_file *) &msg_rcv;
+        return_value = yfsWrite(msg->inodenum, msg->buf, msg->size, msg->offset, pid);
     } else if (msg_rcv.num == YFS_SEEK) {
 
     } else if (msg_rcv.num == YFS_LINK) {

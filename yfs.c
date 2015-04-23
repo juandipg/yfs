@@ -646,6 +646,10 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
             pathname, currentInode);
     char *filename;
     int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
+    if (dirInodeNum == ERROR) {
+        TracePrintf(1, "returning error from yfsCreate\n");
+        return ERROR;
+    }
     TracePrintf(2, "yfscreate: filename %s dirInodeNum %d\n", filename, dirInodeNum);
     // Search all directory entries of that inode for the file name to create
     int blockNum;
@@ -1125,6 +1129,9 @@ main(int argc, char **argv)
     (void)argc;
     (void) argv;
     init();
+    
+    int result = yfsCreate("/a/aghieae/x.txt", ROOTINODE, -1);
+    TracePrintf(1, "result from yfsCreat = %d\n", result);
 
     if (argc > 1) {
         if (Fork() == 0) {

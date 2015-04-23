@@ -324,9 +324,9 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
             nextInodeNumber = dir_entry->inum;
         }
     } else if (inode->type == INODE_REGULAR) {
-        return ERROR;
+        return 0;
     } else if (inode->type == INODE_SYMLINK) {
-        return ERROR;
+        return 0;
     }
     char *nextPath = path;
     if (nextInodeNumber == 0) {

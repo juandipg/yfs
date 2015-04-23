@@ -623,20 +623,27 @@ getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
 
 int
 yfsOpen(char *pathname, int currentInode) {
+    if (pathname == NULL || currentInode <= 0) {
+        return ERROR;
+    }
     if (pathname[0] == '/') {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
-    return getInodeNumberForPath(pathname, currentInode);
+    int inodenum = getInodeNumberForPath(pathname, currentInode);
+    if (inodenum == 0) {
+        return ERROR;
+    }
+    return inodenum;
 }
 
 int
 yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
-    TracePrintf(2, "yfscreate: requested pathname %s with currentInode %d\n", 
-            pathname, currentInode);
-    if (pathname == NULL) {
+    if (pathname == NULL || currentInode <= 0) {
         return ERROR;
     }
+    TracePrintf(2, "yfscreate: requested pathname %s with currentInode %d\n", 
+            pathname, currentInode);
     char *filename;
     int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
     TracePrintf(2, "yfscreate: filename %s dirInodeNum %d\n", filename, dirInodeNum);
@@ -673,7 +680,7 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
         dir_entry->name[i] = filename[i];
     }
     
-    if (inodeNumToSet == -1) {
+    if (inodeNumToSet == CREATE_NEW) {
         inodeNum = getNextFreeInodeNum();
         dir_entry->inum = inodeNum;
         saveBlock(blockNum);
@@ -780,6 +787,9 @@ yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid) {
 
 int
 yfsLink(char *oldName, char *newName, int currentInode) {
+    if (oldName == NULL || newName == NULL || currentInode <= 0) {
+        return ERROR;
+    }
     if (oldName[0] == '/') {
         oldName += sizeof(char);
         currentInode = ROOTINODE;
@@ -807,6 +817,9 @@ yfsLink(char *oldName, char *newName, int currentInode) {
 
 int
 yfsUnlink(char *pathname, int currentInode) {
+    if (pathname == NULL || currentInode <= 0) {
+        return ERROR;
+    }
     // Get the containind directory 
     char *filename;
     int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
@@ -842,7 +855,7 @@ yfsUnlink(char *pathname, int currentInode) {
 
 int
 yfsSymLink(char *oldname, char *newname, int currentInode) {
-    if (oldname == NULL || newname == NULL) {
+    if (oldname == NULL || newname == NULL || currentInode <= 0) {
         return ERROR;
     }
     int i;
@@ -904,6 +917,9 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
 
 int 
 yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
+    if (pathname == NULL || buf == NULL || len < 0 || currentInode <= 0) {
+        return ERROR;
+    }
     if (pathname[0] == '/') {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
@@ -930,6 +946,9 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
 
 int
 yfsMkDir(char *pathname, int currentInode) {
+    if (pathname == NULL || currentInode <= 0) {
+        return ERROR;
+    }
     if (pathname[0] == '/') {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
@@ -986,6 +1005,9 @@ yfsMkDir(char *pathname, int currentInode) {
 
 int
 yfsRmDir(char *pathname, int currentInode) {
+    if (pathname == NULL || currentInode <= 0) {
+        return ERROR;
+    }
     if (pathname[0] == '/') {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
@@ -1022,6 +1044,9 @@ yfsRmDir(char *pathname, int currentInode) {
 
 int
 yfsChDir(char *pathname, int currentInode) {
+    if (pathname == NULL || currentInode <= 0) {
+        return ERROR;
+    }
     if (pathname[0] == '/') {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
@@ -1032,6 +1057,9 @@ yfsChDir(char *pathname, int currentInode) {
 
 int
 yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
+    if (pathname == NULL || currentInode <= 0 || statbuf == NULL) {
+        return ERROR;
+    }
     if (pathname[0] == '/') {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
@@ -1099,9 +1127,8 @@ main(int argc, char **argv)
         if (Fork() == 0) {
             Exec(argv[1], argv + 1);
         } else {
-            int i;
-            for (i = 0; i < 2; i++) {
-                processRequest();
+            for (;;) {
+                processRequest(); 
             }
         }
     }

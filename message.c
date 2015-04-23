@@ -7,9 +7,6 @@
 #include "message.h"
 #include "yfs.h"
 
-// TODO: move this to yfs.h
-#define CREATE_NEW -1
-
 static char * getPathFromProcess(int pid, char *pathname, int len);
 
 void
@@ -21,6 +18,10 @@ processRequest()
     
     // receive the message as a generic type first
     int pid = Receive(&msg_rcv);
+    if (pid == ERROR) {
+        TracePrintf(1, "unable to receive message\n");
+        Exit(1);
+    }
 
     // determine message type based on requested operation
     if (msg_rcv.num == YFS_OPEN) {
@@ -33,6 +34,38 @@ processRequest()
         char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
         return_value = yfsCreate(pathname, msg->current_inode, CREATE_NEW);
         free(pathname);
+    } else if (msg_rcv.num == YFS_READ) {
+        
+    } else if (msg_rcv.num == YFS_WRITE) {
+
+    } else if (msg_rcv.num == YFS_SEEK) {
+
+    } else if (msg_rcv.num == YFS_LINK) {
+
+    } else if (msg_rcv.num == YFS_UNLINK) {
+
+    } else if (msg_rcv.num == YFS_SYMLINK) {
+
+    } else if (msg_rcv.num == YFS_READLINK) {
+
+    } else if (msg_rcv.num == YFS_MKDIR) {
+        struct message_path * msg = (struct message_path *) &msg_rcv;
+        char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
+        return_value = yfsMkDir(pathname, msg->current_inode);
+        free(pathname);
+    } else if (msg_rcv.num == YFS_RMDIR) {
+
+    } else if (msg_rcv.num == YFS_CHDIR) {
+
+    } else if (msg_rcv.num == YFS_STAT) {
+
+    } else if (msg_rcv.num == YFS_SYNC) {
+
+    } else if (msg_rcv.num == YFS_SHUTDOWN) {
+        
+    } else {
+        TracePrintf(1, "unknown operation %d\n", msg_rcv.num);
+        return_value = ERROR;
     }
     
     // send reply

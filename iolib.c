@@ -13,7 +13,7 @@ struct open_file * file_table[MAX_OPEN_FILES] = {NULL};
 int files_open = 0;
 int current_inode = ROOTINODE;
 
-int
+static int
 getLenForPath(char *pathname)
 {
     int i;
@@ -29,7 +29,7 @@ getLenForPath(char *pathname)
     return i + 1;
 }
 
-int
+static int
 addFile(int inodenum)
 {
     int fd;
@@ -51,7 +51,7 @@ addFile(int inodenum)
     return fd;
 }
 
-int
+static int
 removeFile(int fd)
 {
     if (fd < 0 || fd >= MAX_OPEN_FILES
@@ -64,7 +64,7 @@ removeFile(int fd)
     return 0;
 }
 
-int
+static int
 sendPathMessage(int operation, char *pathname)
 {
     int len = getLenForPath(pathname);
@@ -107,8 +107,7 @@ Open(char *pathname)
 int
 Close(int fd)
 {
-    (void) fd;
-    return 0;
+    return removeFile(fd);
 }
 
 int
@@ -187,7 +186,11 @@ int
 MkDir(char *pathname)
 {
     (void) pathname;
-    return 0;
+    int code = sendPathMessage(YFS_MKDIR, pathname);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int

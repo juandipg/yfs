@@ -331,6 +331,7 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     char *nextPath = path;
     if (nextInodeNumber == 0) {
         // Return error
+        TracePrintf(2, "could not find pathname %s\n", path);
         return 0;
     }
     while (nextPath[0] != '/') {
@@ -515,6 +516,7 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
                 freeEntryOffset = (int)((char *)currentEntry - (char *)currentBlock);
             }
             //check the currentEntry fileName to see if it matches
+            TracePrintf(2, "looking at name %s\n", currentEntry->name);
             if (isEqual(pathname, currentEntry->name)) {
                 isFound = true;
                 break;
@@ -537,11 +539,14 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
         return offset;
     } 
     if (createIfNeeded) {
+        TracePrintf(2, "creating new directory entry\n");
         if (freeEntryBlockNum != 0) {
+            TracePrintf(2, "using old, empty dir entry\n");
             *blockNumPtr = freeEntryBlockNum;
             return freeEntryOffset;
         }
         if (inode->size % BLOCKSIZE == 0) {
+            TracePrintf(2, "at bottom edge of block\n");
             // we're at the bottom edge of the block, so
             // we need to allocate a new block
             blockNum = getNthBlock(inode, i, true);
@@ -554,8 +559,11 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
             *blockNumPtr = blockNum;
             return 0;
         } 
+        TracePrintf(2, "appending dir entry at the bottom\n");
         inode->size += sizeof(struct dir_entry);
         saveInode(inodeStartNumber);
+        currentEntry->inum = 0;
+        saveBlock(currBlockNum);
         *blockNumPtr = currBlockNum;
         int offset = (int)((char *)currentEntry - (char *)currentBlock);
         return offset;
@@ -624,11 +632,14 @@ yfsOpen(char *pathname, int currentInode) {
 
 int
 yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
+    TracePrintf(2, "yfscreate: requested pathname %s with currentInode %d\n", 
+            pathname, currentInode);
     if (pathname == NULL) {
         return ERROR;
     }
     char *filename;
     int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
+    TracePrintf(2, "yfscreate: filename %s dirInodeNum %d\n", filename, dirInodeNum);
     // Search all directory entries of that inode for the file name to create
     int blockNum;
     int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
@@ -640,6 +651,7 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
     // that inode number to user
     int inodeNum = dir_entry->inum;
     if (inodeNum != 0) {
+        TracePrintf(2, "file exists with inodeNum %d\n", inodeNum);
         if (inodeNumToSet != -1) {
             return ERROR;
         }
@@ -655,7 +667,7 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
     // If the file does not exist, find the first free directory entry, get
     // a new inode number from free list, get that inode, change the info on 
     // that inode and directory entry (name, type), then return the inode number
-    memset(&dir_entry->name, '\0', MAXPATHNAMELEN);
+    memset(dir_entry->name, '\0', MAXPATHNAMELEN);
     int i;
     for (i = 0; filename[i] != '\0'; i++) {
         dir_entry->name[i] = filename[i];
@@ -665,7 +677,6 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
         inodeNum = getNextFreeInodeNum();
         dir_entry->inum = inodeNum;
         saveBlock(blockNum);
-        block = getBlockForInode(inodeNum);
         struct inode *inode = getInode(inodeNum);
         inode->type = INODE_REGULAR;
         inode->size = 0;
@@ -1088,7 +1099,10 @@ main(int argc, char **argv)
         if (Fork() == 0) {
             Exec(argv[1], argv + 1);
         } else {
-            processRequest();
+            int i;
+            for (i = 0; i < 2; i++) {
+                processRequest();
+            }
         }
     }
     return (0);

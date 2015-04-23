@@ -1,7 +1,6 @@
 #include <stdbool.h>
 
 #define INODESPERBLOCK (BLOCKSIZE / INODESIZE)
-//#define DIRENTRIESPERBLOCK (BLOCKSIZE / sizeof(struct dir_entry))
 
 typedef struct freeInode freeInode;
 typedef struct freeBlock freeBlock;
@@ -39,3 +38,4 @@ void buildFreeInodeAndBlockLists();
 int getNextFreeBlockNum();
 int getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool createIfNeeded);
 int yfsCreate(char *pathname, int currentInode, int inodeNumToSet);
+int yfsOpen(char *pathname, int currentInode);

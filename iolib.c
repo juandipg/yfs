@@ -64,30 +64,44 @@ removeFile(int fd)
     return 0;
 }
 
-struct message_path *
-createPathMessage(int operation, char *pathname)
+int
+sendPathMessage(int operation, char *pathname)
 {
     int len = getLenForPath(pathname);
     if (len == ERROR) {
-        return NULL;
+        return ERROR;
     }
     struct message_path * msg = malloc(sizeof(struct message_path));
     if (msg == NULL) {
         TracePrintf(1, "error allocating space for path message\n");
-        return NULL;
+        return ERROR;
     }
     msg->num = operation;
     msg->current_inode = current_inode;
     msg->pathname = pathname;
     msg->len = len;
-    return msg;
+    if (Send(msg, -FILE_SERVER) != 0) {
+        TracePrintf(1, "error sending message to server\n");
+        free(msg);
+        return ERROR;
+    }
+    // msg gets overwritten with reply message after return from Send
+    int inodenum = msg->num;
+    free(msg);
+    return inodenum;
 }
 
 int
 Open(char *pathname)
 {
-    (void) pathname;
-    return 0;
+    int inodenum = sendPathMessage(YFS_OPEN, pathname);
+    if (inodenum == ERROR) {
+        TracePrintf(1, "received error from server\n");
+        return ERROR;
+    }
+    // try to add a file to the array and return fd or error
+    TracePrintf(2, "inode num %d\n", inodenum);
+    return addFile(inodenum);
 }
 
 int
@@ -100,24 +114,13 @@ Close(int fd)
 int
 Create(char *pathname)
 {
-    // TODO: store message in the stack instead?
-    struct message_path * msg = createPathMessage(YFS_CREATE, pathname);
-    if (msg == NULL) {
-        return ERROR;
-    }
-    if (Send(msg, -FILE_SERVER) != 0) {
-        TracePrintf(1, "error sending message to server\n");
-        free(msg);
-        return ERROR;
-    }
-    // msg gets overwritten with reply message after return from Send
-    int inodenum = msg->num;
-    free(msg);
+    int inodenum = sendPathMessage(YFS_CREATE, pathname);
     if (inodenum == ERROR) {
         TracePrintf(1, "received error from server\n");
         return ERROR;
     }
     // try to add a file to the array and return fd or error
+    TracePrintf(2, "inode num %d\n", inodenum);
     return addFile(inodenum);
 }
 

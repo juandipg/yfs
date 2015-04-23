@@ -18,18 +18,24 @@ processRequest()
     int return_value;
 
     struct message_generic msg_rcv;
+    
+    // receive the message as a generic type first
     int pid = Receive(&msg_rcv);
 
+    // determine message type based on requested operation
     if (msg_rcv.num == YFS_OPEN) {
-
+        struct message_path * msg = (struct message_path *) &msg_rcv;
+        char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
+        return_value = yfsOpen(pathname, msg->current_inode);
+        free(pathname);
     } else if (msg_rcv.num == YFS_CREATE) {
         struct message_path * msg = (struct message_path *) &msg_rcv;
         char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
-        // the return value can be error, which should be sent as the reply
         return_value = yfsCreate(pathname, msg->current_inode, CREATE_NEW);
         free(pathname);
     }
     
+    // send reply
     struct message_generic msg_rply;
     msg_rply.num = return_value;
     if (Reply(&msg_rply, pid) != 0) {

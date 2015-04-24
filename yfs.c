@@ -667,6 +667,26 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
     if (pathname == NULL || currentInode <= 0) {
         return ERROR;
     }
+    int i;
+    for (i = 0; i < MAXPATHNAMELEN; i++) {
+        if (pathname[i] == '\0') {
+            break;
+        }
+    }
+    if (i == MAXPATHNAMELEN) {
+        return ERROR;
+    }
+    
+    i = 0;
+    while ((pathname[i] != '\0') && (i < MAXPATHNAMELEN)) {
+        if (pathname[i] == '/') {
+            if (i+1 > MAXPATHNAMELEN || pathname[i+1] == '\0') {
+                return ERROR;
+            }
+        }
+        i++;
+    }
+    
     TracePrintf(2, "yfscreate: requested pathname %s with currentInode %d\n", 
             pathname, currentInode);
     char *filename;
@@ -704,7 +724,6 @@ yfsCreate(char *pathname, int currentInode, int inodeNumToSet) {
     // a new inode number from free list, get that inode, change the info on 
     // that inode and directory entry (name, type), then return the inode number
     memset(dir_entry->name, '\0', MAXPATHNAMELEN);
-    int i;
     for (i = 0; filename[i] != '\0'; i++) {
         dir_entry->name[i] = filename[i];
     }

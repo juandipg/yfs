@@ -19,14 +19,13 @@ main(int argc, char **argv)
 //    TracePrintf(1, "close file with fd: %d, return %d\n", fd2, val);    
     TracePrintf(1, "called mkdir, return %d\n", MkDir("/a/j"));
     TracePrintf(1, "called chdir, return %d\n", ChDir("/a/j"));
-    int fd = Create("/a/x.txt");
+    int fd = Create("x.txt");
 //    TracePrintf(1, "creating file x.txt, got fd %d\n", fd);
 //    TracePrintf(1, "opened file /a/j/x.txt, got fd %d\n", Open("/a/j/x.txt"));
 //    TracePrintf(1, "opened file x.txt, got fd %d\n", Open("x.txt"));
 //    TracePrintf(1, "unlinking /a/j/x.txt, got %d\n", Unlink("/a/j/x.txt"));
 //    TracePrintf(1, "removing directory /a/j, got %d\n", RmDir("/a/j"));
     TracePrintf(1, "writing to file, got %d\n", Write(fd, "hello world\n", 13));
-<<<<<<< HEAD
     int fd0 = Open("x.txt");
     TracePrintf(1, "opening file, got fd %d\n", fd0);
     char buf[13];
@@ -38,19 +37,6 @@ main(int argc, char **argv)
 //    char buf3[13];
 //    TracePrintf(1, "reading from file, got %d\n", Read(fd3, buf3, 13));
 //    TracePrintf(1, "got %s\n", buf3);
-=======
-//    int fd0 = Open("x.txt");
-//    TracePrintf(1, "opening file, got fd %d\n", fd0);
-//    char buf[13];
-//    TracePrintf(1, "reading from file, got %d\n", Read(fd0, buf, 13));
-//    TracePrintf(1, "got %s\n", buf);
-    TracePrintf(1, "calling symlink, got %d\n", SymLink("x.txt", "/a/myfile.txt"));
-    int fd3 = Open("/a/myfile.txt");
-    TracePrintf(1, "opening symlinked file, got fd %d\n", fd3);
-    char buf3[13];
-    TracePrintf(1, "reading from file, got %d\n", Read(fd3, buf3, 13));
-    TracePrintf(1, "got %s\n", buf3);
->>>>>>> e099e3f53f892776f36f37119cc7358547eb54af
 //    char buff[6];
 //    TracePrintf(1, "reading symlink, got %d\n", ReadLink("/a/myfile.txt", buff, 6));
 //    TracePrintf(1, "symlink points to %s\n", buff);

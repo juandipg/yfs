@@ -1006,7 +1006,7 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode, int pid) {
         charsToRead++;
     }
     
-    if (CopyFrom(pid, (char *)dataBlock, buf, charsToRead) == ERROR)
+    if (CopyTo(pid, buf, (char *)dataBlock, charsToRead) == ERROR)
     {
         TracePrintf(1, "error copying %d bytes from pid %d\n", charsToRead, pid);
         return ERROR;

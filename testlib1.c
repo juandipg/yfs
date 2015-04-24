@@ -31,12 +31,12 @@ main(int argc, char **argv)
     char buf[13];
     TracePrintf(1, "reading from file, got %d\n", Read(fd0, buf, 13));
     TracePrintf(1, "got %s\n", buf);
-    TracePrintf(1, "calling symlink, got %d\n", SymLink("x.txt", "/a/myfile.txt"));
-    int fd3 = Open("/a/myfile.txt");
-    TracePrintf(1, "opening symlinked file, got fd %d\n", fd3);
-    char buf3[13];
-    TracePrintf(1, "reading from file, got %d\n", Read(fd3, buf3, 13));
-    TracePrintf(1, "got %s\n", buf3);
+//    TracePrintf(1, "calling symlink, got %d\n", SymLink("x.txt", "/a/myfile.txt"));
+//    int fd3 = Open("/a/myfile.txt");
+//    TracePrintf(1, "opening symlinked file, got fd %d\n", fd3);
+//    char buf3[13];
+//    TracePrintf(1, "reading from file, got %d\n", Read(fd3, buf3, 13));
+//    TracePrintf(1, "got %s\n", buf3);
 //    char buff[6];
 //    TracePrintf(1, "reading symlink, got %d\n", ReadLink("/a/myfile.txt", buff, 6));
 //    TracePrintf(1, "symlink points to %s\n", buff);
@@ -47,5 +47,9 @@ main(int argc, char **argv)
 //    TracePrintf(1, "reading from file, got %d\n", Read(fd1, buf2, 13));
 //    TracePrintf(1, "got %s\n", buf2);
 //    TracePrintf(1, "size of message_stat %d\n", sizeof(struct message_stat));
+    struct Stat stat;
+    TracePrintf(1, "calling stat, got %d\n", Stat("x.txt", &stat));
+    TracePrintf(1, "inum %d, nlnk %d, size %d, type %d\n",
+            stat.inum, stat.nlink, stat.size, stat.type);
     return (0);
 }

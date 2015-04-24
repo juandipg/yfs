@@ -1138,7 +1138,7 @@ yfsChDir(char *pathname, int currentInode) {
 }
 
 int
-yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
+yfsStat(char *pathname, int currentInode, struct Stat *statbuf, int pid) {
     if (pathname == NULL || currentInode <= 0 || statbuf == NULL) {
         return ERROR;
     }
@@ -1154,10 +1154,16 @@ yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
     }
     struct inode *inode = getInode(inodeNum);
     
-    statbuf->inum = inodeNum;
-    statbuf->nlink = inode->nlink;
-    statbuf->size = inode->size;
-    statbuf->type = inode->type;
+    struct Stat stat;
+    stat.inum = inodeNum;
+    stat.nlink = inode->nlink;
+    stat.size = inode->size;
+    stat.type = inode->type;
+    
+    if (CopyTo(pid, statbuf, &stat, sizeof(struct Stat)) == ERROR) {
+        TracePrintf(1, "error copying %d bytes to pid %d\n", sizeof(struct Stat), pid);
+        return ERROR;
+    }
     
     return 0;
 }

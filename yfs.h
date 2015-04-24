@@ -50,6 +50,6 @@ int yfsReadLink(char *pathname, char *buf, int len, int currentInode, int pid);
 int yfsMkDir(char *pathname, int currentInode);
 int yfsRmDir(char *pathname, int currentInode);
 int yfsChDir(char *pathname, int currentInode);
-int yfsStat(char *pathname, int currentInode, struct Stat *statbuf);
+int yfsStat(char *pathname, int currentInode, struct Stat *statbuf, int pid);
 int yfsSync(void);
 int yfsShutdown(void);

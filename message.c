@@ -86,7 +86,7 @@ processRequest()
     } else if (msg_rcv.num == YFS_STAT) {
         struct message_stat * msg = (struct message_stat *) &msg_rcv;
         char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
-        return_value = yfsStat(pathname, msg->current_inode, msg->statbuf);
+        return_value = yfsStat(pathname, msg->current_inode, msg->statbuf, pid);
         free(pathname);
     } else if (msg_rcv.num == YFS_SYNC) {
         return_value = yfsSync();

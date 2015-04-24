@@ -42,8 +42,7 @@ processRequest()
         return_value = yfsWrite(msg->inodenum, msg->buf, msg->size, msg->offset, pid);
     } else if (msg_rcv.num == YFS_SEEK) {
         struct message_seek * msg = (struct message_seek *) &msg_rcv;
-        (void) msg;
-        return_value = ERROR; // TODO: call yfsSeek here after changing it
+        return_value = yfsSeek(msg->inodenum, msg->offset, msg->whence, msg->current_position);
     } else if (msg_rcv.num == YFS_LINK) {
         struct message_link * msg = (struct message_link *) &msg_rcv;
         char *oldname = getPathFromProcess(pid, msg->old_name, msg->old_len);

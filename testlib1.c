@@ -26,10 +26,11 @@ main(int argc, char **argv)
 //    TracePrintf(1, "unlinking /a/j/x.txt, got %d\n", Unlink("/a/j/x.txt"));
 //    TracePrintf(1, "removing directory /a/j, got %d\n", RmDir("/a/j"));
     TracePrintf(1, "writing to file, got %d\n", Write(fd, "hello world\n", 13));
-    int fd0 = Open("x.txt");
-    TracePrintf(1, "opening file, got fd %d\n", fd0);
+//    int fd0 = Open("x.txt");
+//    TracePrintf(1, "opening file, got fd %d\n", fd0);
+    TracePrintf(1, "calling seek, got %d\n", Seek(fd, -14, SEEK_END));
     char buf[13];
-    TracePrintf(1, "reading from file, got %d\n", Read(fd0, buf, 13));
+    TracePrintf(1, "reading from file, got %d\n", Read(fd, buf, 13));
     TracePrintf(1, "got %s\n", buf);
 //    TracePrintf(1, "calling symlink, got %d\n", SymLink("x.txt", "/a/myfile.txt"));
 //    int fd3 = Open("/a/myfile.txt");
@@ -47,9 +48,9 @@ main(int argc, char **argv)
 //    TracePrintf(1, "reading from file, got %d\n", Read(fd1, buf2, 13));
 //    TracePrintf(1, "got %s\n", buf2);
 //    TracePrintf(1, "size of message_stat %d\n", sizeof(struct message_stat));
-    struct Stat stat;
-    TracePrintf(1, "calling stat, got %d\n", Stat("x.txt", &stat));
-    TracePrintf(1, "inum %d, nlnk %d, size %d, type %d\n",
-            stat.inum, stat.nlink, stat.size, stat.type);
+//    struct Stat stat;
+//    TracePrintf(1, "calling stat, got %d\n", Stat("x.txt", &stat));
+//    TracePrintf(1, "inum %d, nlnk %d, size %d, type %d\n",
+//            stat.inum, stat.nlink, stat.size, stat.type);
     return (0);
 }

@@ -53,3 +53,4 @@ int yfsChDir(char *pathname, int currentInode);
 int yfsStat(char *pathname, int currentInode, struct Stat *statbuf, int pid);
 int yfsSync(void);
 int yfsShutdown(void);
+int yfsSeek(int inodeNum, int offset, int whence, int currentPosition);

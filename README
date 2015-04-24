@@ -1,0 +1,46 @@
+COMP 421: lab 3
+YFS
+
+Margaret Kelley <mlk6@rice.edu>
+Juan Prado <jdp5@rice.edu>
+
+##########################################################################################
+
+DATA STRUCTURES
+
+Messages in message.h
+	We define various message structs in message.h for the library to communicate with the server. All of these messages are of the same size, and start with an integer value determining the type of the request. The generic message just contains the integer followed by padding.This way, each message can be initially cast into a generic message to determine what type it should next be cast into. The uses of all other message types are clearly described in the comments in message.h
+
+Queues
+	We use doubly linked lists to store queues of blocks and inodes for the cache in the server. We keep the most recently used blocks and inodes at the end of their queue. So removing the LRU block or inode just involves removing from the front of the queue. Removals and insertions are both O(1) since the queue is a doubly linked list. Each queue stores cache item structs which contain the block or inode number, a dirty bit to keep track of whether the block or inode has changed, the address of the block or inode, and pointers to previous and next cache items.
+
+Open file
+	Our library has a struct to describe an open file which keeps track of the file descriptor and the current position within that file.
+
+
+
+ALGORITHMS
+
+server
+- Traversing paths
+	To traverse paths, we implemented a function to return the inode number of an input path. That function also takes an inode start number as a parameter. That inode start number is the directory in which to look for the inode number of the first element of the path. From there, the pathname is adjusted to the next element of the path, and the function gets called recursively until the inode number of the last path element is found. Based on the type of each path element, the method will process the path element differently.
+
+- Cache
+	We have a cache for inodes and blocks. We keep a hash table of cached blocks, keyed by block number, and a hash table of cached inodes, keyed by inode number. We also keep a queue for cached blocks and a queue for cached inodes as described above. We have a function to get a block given a block number, and a function to get an inode, given an inode number. We also have functions to save blocks and inodes. The save functions simply mark the cache item associated with the block or inode number as dirty. The getBlock function is a bit more complicated. First, we check to see if the block is in the cache using the hashmap. If it is, we remove it from it’s current location in the block queue and add it to the end, and return the pointer to the block. If the block is not in the cache and the cache is full, we remove the LRU block from the cache and add the new block to the cache queue and hashmap, before returning the pointer to the new block. We follow a similar process for caching inodes.
+
+- Implementation of calls
+	We have separate methods for all of the library calls on the server side. These functions all begin with “yfs” e.g. “yfsCreate” for “Create”. If the function needs to traverse a path at any point, the inode start number to start from is passed as a parameter to the function along with the pathname.
+
+- Processing requests
+	All of the processing of requests happens in message.c. The main function in yfs.c loops infinitely, and calls the processRequest() function in message.c. This function receives a message from a user process calling a library function, then casts that message to determine how to process it. Then, processRequest() calls the appropriate server function with the appropriate arguments and sends the return value back to the user process that called the library method, for the library to return.
+
+iolib
+- Message types
+	As previously described, there are different message types for different server requests. The library does all the work of determining what type of message to use and what to put in that message to send to the server for processing.
+
+- Keeping track of open files/locations in files
+	The library keeps track of open files/locations in an array of open_file structs of length MAX_OPEN_FILES. The index of the array that this the file descriptor number. So the open_file struct at index 4 in the array describes open file with fd = 4. If an open_file struct does not exist at an index of the array, that means there is no open file with fd = that index. When files are read or written to, the current position in that file in the open_file array is updated.
+
+##########################################################################################
+
+Comp 421. YFS. 									Rice U

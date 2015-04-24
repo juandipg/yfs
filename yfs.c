@@ -1213,18 +1213,8 @@ yfsShutdown(void) {
 }
 
 int
-yfsSeek(char *pathname, int currentInode, int offset, int whence, int currentPosition) {
-    if (pathname == NULL || currentInode <= 0) {
-        return ERROR;
-    }
-    
-    if (pathname[0] == '/') {
-        while (pathname[0] == '/')
-            pathname += sizeof(char);
-        currentInode = ROOTINODE;
-    }
+yfsSeek(int inodeNum, int offset, int whence, int currentPosition) {
     numSymLinks = 0;
-    int inodeNum = getInodeNumberForPath(pathname, currentInode);
     struct inode *inode = getInode(inodeNum);
     int size = inode->size;
     if (currentPosition > size || currentPosition < 0) {

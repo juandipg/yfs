@@ -17,6 +17,7 @@ int freeInodeCount = 0;
 int freeBlockCount = 0;
 int currentInode = ROOTINODE;
 
+int numSymLinks = 0;
 
 queue *cacheInodeQueue;
 struct hash_table *inodeTable;
@@ -369,6 +370,10 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     nextPath += sizeof (char);
     inode = getInode(nextInodeNumber);
     if (inode->type == INODE_SYMLINK) {
+        numSymLinks++;
+        if (numSymLinks > MAXSYMLINKS) {
+            return 0;
+        }
         int dataBlockNum = inode->direct[0];
         char *dataBlock = (char *)getBlock(dataBlockNum);
         if (dataBlock[0] == '/') {
@@ -628,6 +633,7 @@ getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
         char *filename = pathname + (sizeof(char) * (lastSlashIndex + 1));
         *filenamePtr = filename;
         // Get the inode of the directory the file should be created in
+        numSymLinks = 0;
         int dirInodeNum = getInodeNumberForPath(path, currentInode);
         if (dirInodeNum == 0) {
             return ERROR;
@@ -648,6 +654,7 @@ yfsOpen(char *pathname, int currentInode) {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
+    numSymLinks = 0;
     int inodenum = getInodeNumberForPath(pathname, currentInode);
     if (inodenum == 0) {
         return ERROR;
@@ -826,7 +833,7 @@ yfsLink(char *oldName, char *newName, int currentInode) {
         oldName += sizeof(char);
         currentInode = ROOTINODE;
     }
-    
+    numSymLinks = 0;
     int oldNameNodeNum = getInodeNumberForPath(oldName, currentInode);
     struct inode *inode = getInode(oldNameNodeNum);
     if (inode->type == INODE_DIRECTORY || oldNameNodeNum == 0) {
@@ -956,7 +963,7 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
-    
+    numSymLinks = 0;
     int symInodeNum = getInodeNumberForPath(pathname, currentInode);
     if (symInodeNum == ERROR) {
         return ERROR;
@@ -1044,7 +1051,7 @@ yfsRmDir(char *pathname, int currentInode) {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
-    
+    numSymLinks = 0;
     int inodeNum = getInodeNumberForPath(pathname, currentInode);
     if (inodeNum == ERROR) {
         return ERROR;
@@ -1083,6 +1090,7 @@ yfsChDir(char *pathname, int currentInode) {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
+    numSymLinks = 0;
     int inode = getInodeNumberForPath(pathname, currentInode);
     if (inode == 0) {
         return ERROR;
@@ -1099,7 +1107,7 @@ yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
-    
+    numSymLinks = 0;
     int inodeNum = getInodeNumberForPath(pathname, currentInode);
     if (inodeNum == 0) {
         return ERROR;
@@ -1164,6 +1172,7 @@ yfsSeek(char *pathname, int currentInode, int offset, int whence, int currentPos
         pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
+    numSymLinks = 0;
     int inodeNum = getInodeNumberForPath(pathname, currentInode);
     struct inode *inode = getInode(inodeNum);
     int size = inode->size;
@@ -1248,11 +1257,14 @@ main(int argc, char **argv)
     result = yfsSymLink("j", "/f/g/h/c", ROOTINODE);
     TracePrintf(2, "mkdir result = %d\n", result);
     
+    numSymLinks = 0;
     int inode1 = getInodeNumberForPath("f/g/h/j", ROOTINODE);
     TracePrintf(2, "inode num of /f/g/h/j = %d\n", inode1);
     
+    numSymLinks = 0;
     int inode3 = getInodeNumberForPath("f", ROOTINODE);
     TracePrintf(2, "f inode = %d\n", inode3);
+    numSymLinks = 0;
     int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
     TracePrintf(2, "inode num of /a/b/c = %d\n", inode2);
     

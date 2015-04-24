@@ -52,3 +52,4 @@ int yfsRmDir(char *pathname, int currentInode);
 int yfsChDir(char *pathname, int currentInode);
 int yfsStat(char *pathname, int currentInode, struct Stat *statbuf);
 int yfsSync(void);
+int yfsShutdown(void);

@@ -41,7 +41,9 @@ processRequest()
         struct message_file * msg = (struct message_file *) &msg_rcv;
         return_value = yfsWrite(msg->inodenum, msg->buf, msg->size, msg->offset, pid);
     } else if (msg_rcv.num == YFS_SEEK) {
-
+        struct message_seek * msg = (struct message_seek *) &msg_rcv;
+        (void) msg;
+        return_value = ERROR; // TODO: call yfsSeek here after changing it
     } else if (msg_rcv.num == YFS_LINK) {
         struct message_link * msg = (struct message_link *) &msg_rcv;
         char *oldname = getPathFromProcess(pid, msg->old_name, msg->old_len);
@@ -82,11 +84,14 @@ processRequest()
         return_value = yfsChDir(pathname, msg->current_inode);
         free(pathname);
     } else if (msg_rcv.num == YFS_STAT) {
-
+        struct message_stat * msg = (struct message_stat *) &msg_rcv;
+        char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
+        return_value = yfsStat(pathname, msg->current_inode, msg->statbuf);
+        free(pathname);
     } else if (msg_rcv.num == YFS_SYNC) {
-
+        return_value = yfsSync();
     } else if (msg_rcv.num == YFS_SHUTDOWN) {
-        
+        return_value = yfsShutdown();
     } else {
         TracePrintf(1, "unknown operation %d\n", msg_rcv.num);
         return_value = ERROR;

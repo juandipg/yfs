@@ -1,3 +1,5 @@
+#include <comp421/iolib.h>
+
 /*
  * message types and IPC API
  */
@@ -81,6 +83,29 @@ struct message_read_link {
     char *buf;
     int path_len;
     int len;
+};
+
+/*
+ * A message for seek
+ */
+struct message_seek {
+    int num;
+    int inodenum;
+    int current_position;
+    int offset;
+    int whence;
+    char padding[12];
+};
+
+/*
+ * A message for stat
+ */
+struct message_stat {
+    int num;
+    int current_inode;
+    char *pathname;
+    int len;
+    struct Stat *statbuf;
 };
 
 void processRequest();

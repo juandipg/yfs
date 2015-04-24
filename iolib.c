@@ -262,7 +262,9 @@ sendGenericMessage(int operation) {
     }
     msg->num = operation;
     if (Send(msg, -FILE_SERVER) != 0) {
-        TracePrintf(1, "error sending message to server\n");
+        if (operation != YFS_SHUTDOWN) {
+            TracePrintf(1, "error sending message to server\n");
+        }
         free(msg);
         return ERROR;
     }
@@ -449,9 +451,6 @@ Sync()
 int
 Shutdown()
 {
-    int code = sendGenericMessage(YFS_SHUTDOWN);
-    if (code == ERROR) {
-        TracePrintf(1, "received error from server\n");
-    }
-    return code;
+    sendGenericMessage(YFS_SHUTDOWN);
+    return 0;
 }

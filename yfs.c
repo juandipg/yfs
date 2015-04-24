@@ -1155,6 +1155,43 @@ yfsShutdown(void) {
 }
 
 int
+yfsSeek(char *pathname, int currentInode, int offset, int whence, int currentPosition) {
+    if (pathname == NULL || currentInode <= 0) {
+        return ERROR;
+    }
+    
+    if (pathname[0] == '/') {
+        pathname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    int inodeNum = getInodeNumberForPath(pathname, currentInode);
+    struct inode *inode = getInode(inodeNum);
+    int size = inode->size;
+    if (currentPosition > size || currentPosition < 0) {
+        return ERROR;
+    }
+    if (whence == SEEK_SET) {
+        if (offset < 0 || offset > size) {
+            return ERROR;
+        }
+        return offset;
+    }
+    if (whence == SEEK_CUR) {
+        if (currentPosition + offset > size || currentPosition + offset < 0) {
+            return ERROR;
+        }
+        return currentPosition + offset;
+    }
+    if (whence == SEEK_END) {
+        if (offset > 0 || size + offset < 0) {
+            return ERROR;
+        }
+        return size + offset;
+    }
+    return ERROR;
+}
+
+int
 main(int argc, char **argv)
 {
     (void) argc;
@@ -1219,25 +1256,28 @@ main(int argc, char **argv)
     int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
     TracePrintf(2, "inode num of /a/b/c = %d\n", inode2);
     
-//    struct Stat *stat = malloc(sizeof(struct Stat));
+    struct Stat *stat = malloc(sizeof(struct Stat));
 //    
-//    int statresult = yfsStat("/a/b", ROOTINODE, stat);
-//    TracePrintf(1, "stat result = %d\n", statresult);
-//    TracePrintf(1, "stat->inum = %d\n", stat->inum);
-//    TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
-//    TracePrintf(1, "stat->size = %d\n", stat->size);
-//    TracePrintf(1, "stat->type = %d\n", stat->type);
-//    
-//    
-//    statresult = yfsStat("/f/g/h", ROOTINODE, stat);
-//    TracePrintf(1, "stat result = %d\n", statresult);
-//    TracePrintf(1, "h stat->inum = %d\n", stat->inum);
-//    TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);
-//    TracePrintf(1, "h stat->size = %d\n", stat->size);
-//    TracePrintf(1, "h stat->type = %d\n", stat->type);
+    int statresult = yfsStat("/a/b", ROOTINODE, stat);
+    TracePrintf(1, "stat result = %d\n", statresult);
+    TracePrintf(1, "stat->inum = %d\n", stat->inum);
+    TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
+    TracePrintf(1, "stat->size = %d\n", stat->size);
+    TracePrintf(1, "stat->type = %d\n", stat->type);
+    
+    
+    statresult = yfsStat("/f/g/h", ROOTINODE, stat);
+    TracePrintf(1, "stat result = %d\n", statresult);
+    TracePrintf(1, "h stat->inum = %d\n", stat->inum);
+    TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);
+    TracePrintf(1, "h stat->size = %d\n", stat->size);
+    TracePrintf(1, "h stat->type = %d\n", stat->type);
+    
+    int seekresult = yfsSeek("/f/g/h", ROOTINODE, 0, SEEK_END, 50);
+    TracePrintf(1, "seek result = %d\n", seekresult);
     
     //yfsSync();
-    yfsShutdown();
+ //   yfsShutdown();
     
 //    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
 //    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);

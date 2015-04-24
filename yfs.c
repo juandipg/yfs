@@ -367,7 +367,13 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
         }
         nextPath += sizeof (char);
     }
+    while (nextPath[1] == '/') {
+        TracePrintf(1, "next path = %s\n", nextPath);
+        nextPath += sizeof (char);
+        TracePrintf(1, "next path = %s\n", nextPath);
+    }
     nextPath += sizeof (char);
+    TracePrintf(1, "done looping\n");
     inode = getInode(nextInodeNumber);
     if (inode->type == INODE_SYMLINK) {
         numSymLinks++;
@@ -608,7 +614,8 @@ getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
     
     // adjust pathname
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
     
@@ -651,8 +658,9 @@ yfsOpen(char *pathname, int currentInode) {
         return ERROR;
     }
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
-        currentInode = ROOTINODE;
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
+         currentInode = ROOTINODE;
     }
     numSymLinks = 0;
     int inodenum = getInodeNumberForPath(pathname, currentInode);
@@ -979,8 +987,9 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
         return ERROR;
     }
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
-        currentInode = ROOTINODE;
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
+         currentInode = ROOTINODE;
     }
     numSymLinks = 0;
     int symInodeNum = getInodeNumberForPath(pathname, currentInode);
@@ -1008,8 +1017,9 @@ yfsMkDir(char *pathname, int currentInode) {
         return ERROR;
     }
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
-        currentInode = ROOTINODE;
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
+         currentInode = ROOTINODE;
     }
     
     char *filename;
@@ -1067,8 +1077,9 @@ yfsRmDir(char *pathname, int currentInode) {
         return ERROR;
     }
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
-        currentInode = ROOTINODE;
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
+         currentInode = ROOTINODE;
     }
     numSymLinks = 0;
     int inodeNum = getInodeNumberForPath(pathname, currentInode);
@@ -1106,8 +1117,9 @@ yfsChDir(char *pathname, int currentInode) {
         return ERROR;
     }
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
-        currentInode = ROOTINODE;
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
+         currentInode = ROOTINODE;
     }
     numSymLinks = 0;
     int inode = getInodeNumberForPath(pathname, currentInode);
@@ -1123,7 +1135,8 @@ yfsStat(char *pathname, int currentInode, struct Stat *statbuf) {
         return ERROR;
     }
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
     numSymLinks = 0;
@@ -1188,7 +1201,8 @@ yfsSeek(char *pathname, int currentInode, int offset, int whence, int currentPos
     }
     
     if (pathname[0] == '/') {
-        pathname += sizeof(char);
+        while (pathname[0] == '/')
+            pathname += sizeof(char);
         currentInode = ROOTINODE;
     }
     numSymLinks = 0;
@@ -1289,7 +1303,7 @@ main(int argc, char **argv)
     
     struct Stat *stat = malloc(sizeof(struct Stat));
 //    
-    int statresult = yfsStat("/a/b", ROOTINODE, stat);
+    int statresult = yfsStat("////a/////b", ROOTINODE, stat);
     TracePrintf(1, "stat result = %d\n", statresult);
     TracePrintf(1, "stat->inum = %d\n", stat->inum);
     TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
@@ -1297,7 +1311,7 @@ main(int argc, char **argv)
     TracePrintf(1, "stat->type = %d\n", stat->type);
     
     
-    statresult = yfsStat("/f/g/h", ROOTINODE, stat);
+    statresult = yfsStat("/f/g///h", ROOTINODE, stat);
     TracePrintf(1, "stat result = %d\n", statresult);
     TracePrintf(1, "h stat->inum = %d\n", stat->inum);
     TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);

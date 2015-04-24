@@ -19,8 +19,8 @@ processRequest()
     // receive the message as a generic type first
     int pid = Receive(&msg_rcv);
     if (pid == ERROR) {
-        TracePrintf(1, "unable to receive message\n");
-        Exit(1);
+        TracePrintf(1, "unable to receive message, shutting down\n");
+        yfsShutdown();
     }
 
     // determine message type based on requested operation

@@ -46,7 +46,7 @@ int yfsWrite(int inodeNum, void *buf, int size, int byteOffset, int pid);
 int yfsLink(char *oldName, char *newName, int currentInode);
 int yfsUnlink(char *pathname, int currentInode);
 int yfsSymLink(char *oldname, char *newname, int currentInode);
-int yfsReadLink(char *pathname, char *buf, int len, int currentInode);
+int yfsReadLink(char *pathname, char *buf, int len, int currentInode, int pid);
 int yfsMkDir(char *pathname, int currentInode);
 int yfsRmDir(char *pathname, int currentInode);
 int yfsChDir(char *pathname, int currentInode);

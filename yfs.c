@@ -982,7 +982,7 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
 }
 
 int 
-yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
+yfsReadLink(char *pathname, char *buf, int len, int currentInode, int pid) {
     if (pathname == NULL || buf == NULL || len < 0 || currentInode <= 0) {
         return ERROR;
     }
@@ -1001,14 +1001,18 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode) {
     int dataBlockNum = symInode->direct[0];
     char *dataBlock = (char *)getBlock(dataBlockNum);
     
-    int charsRead = 0;
-    
-    while (charsRead < len && dataBlock[charsRead] != '\0') {
-        buf[charsRead] = dataBlock[charsRead];
-        charsRead++;
+    int charsToRead = 0;
+    while (charsToRead < len && dataBlock[charsToRead] != '\0') {
+        charsToRead++;
     }
     
-    return charsRead;
+    if (CopyFrom(pid, (char *)dataBlock, buf, charsToRead) == ERROR)
+    {
+        TracePrintf(1, "error copying %d bytes from pid %d\n", charsToRead, pid);
+        return ERROR;
+    }
+
+    return charsToRead;
 }
 
 int

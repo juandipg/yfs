@@ -121,7 +121,7 @@ sendFileMessage(int operation, int inodenum, void *buf, int size, int offset)
     msg->buf = buf;
     msg->size = size;
     msg->offset = offset;
-    if (Send(msg, -FILE_SERVER) != 0) { // TODO: factor this out to a sendMessage() method?
+    if (Send(msg, -FILE_SERVER) != 0) {
         TracePrintf(1, "error sending message to server\n");
         free(msg);
         return ERROR;
@@ -185,6 +185,82 @@ sendReadLinkMessage(char *pathname, char *buf, int len)
     msg->path_len = path_len;
     msg->buf = buf;
     msg->len = len;
+    if (Send(msg, -FILE_SERVER) != 0) {
+        TracePrintf(1, "error sending message to server\n");
+        free(msg);
+        return ERROR;
+    }
+    // msg gets overwritten with reply message after return from Send
+    int code = msg->num;
+    free(msg);
+    return code;
+}
+
+static int
+sendSeekMessage(int inodenum, int current_position, int offset, int whence)
+{
+    if (inodenum <= 0) {
+        return ERROR;
+    }
+    struct message_seek * msg = malloc(sizeof(struct message_seek));
+    if (msg == NULL) {
+        TracePrintf(1, "error allocating space for seek message\n");
+        return ERROR;
+    }
+    msg->num = YFS_SEEK;
+    msg->inodenum = inodenum;
+    msg->current_position = current_position;
+    msg->offset = offset;
+    msg->whence = whence;
+    if (Send(msg, -FILE_SERVER) != 0) {
+        TracePrintf(1, "error sending message to server\n");
+        free(msg);
+        return ERROR;
+    }
+    int code = msg->num;
+    free(msg);
+    return code;
+}
+
+static int
+sendStatMessage(char *pathname, struct Stat *statbuf)
+{
+    if (statbuf == NULL) {
+        return ERROR;
+    }
+    int len = getLenForPath(pathname);
+    if (len == ERROR) {
+        return ERROR;
+    }
+    struct message_stat * msg = malloc(sizeof(struct message_stat));
+    if (msg == NULL) {
+        TracePrintf(1, "error allocating space for path message\n");
+        return ERROR;
+    }
+    msg->num = YFS_STAT;
+    msg->current_inode = current_inode;
+    msg->pathname = pathname;
+    msg->len = len;
+    msg->statbuf = statbuf;
+    if (Send(msg, -FILE_SERVER) != 0) {
+        TracePrintf(1, "error sending message to server\n");
+        free(msg);
+        return ERROR;
+    }
+    // msg gets overwritten with reply message after return from Send
+    int code = msg->num;
+    free(msg);
+    return code;
+}
+
+static int
+sendGenericMessage(int operation) {
+    struct message_generic * msg = malloc(sizeof(struct message_generic));
+    if (msg == NULL) {
+        TracePrintf(1, "error allocating space for path message\n");
+        return ERROR;
+    }
+    msg->num = operation;
     if (Send(msg, -FILE_SERVER) != 0) {
         TracePrintf(1, "error sending message to server\n");
         free(msg);
@@ -263,11 +339,19 @@ Write(int fd, void *buf, int size)
 int
 Seek(int fd, int offset, int whence)
 {
-    // TODO
-    (void) fd;
-    (void) offset;
-    (void) whence;
-    return 0;
+    if (whence != SEEK_SET && whence != SEEK_CUR && whence != SEEK_END) {
+        return ERROR;
+    }
+    struct open_file * file = getFile(fd);
+    if (file == NULL) {
+        return ERROR;
+    }
+    int position = sendSeekMessage(file->inodenum, file->position, offset, whence);
+    if (position == ERROR) {
+        TracePrintf(1, "received error from server\n");
+        return ERROR;
+    }
+    return (file->position = position);
 }
 
 int
@@ -345,22 +429,29 @@ ChDir(char *pathname)
 int
 Stat(char *pathname, struct Stat *statbuf)
 {
-    // TODO
-    (void) pathname;
-    (void) statbuf;
-    return 0;
+    int code = sendStatMessage(pathname, statbuf);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int
 Sync()
 {
-    // TODO
-    return 0;
+    int code = sendGenericMessage(YFS_SYNC);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int
 Shutdown()
 {
-    // TODO
-    return 0;
+    int code = sendGenericMessage(YFS_SHUTDOWN);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }

@@ -1,5 +1,7 @@
 #include <comp421/iolib.h>
 #include <comp421/hardware.h>
+#include <comp421/yalnix.h>
+//#include "message.h"
 
 int
 main(int argc, char **argv)
@@ -44,5 +46,6 @@ main(int argc, char **argv)
 //    char buf2[13];
 //    TracePrintf(1, "reading from file, got %d\n", Read(fd1, buf2, 13));
 //    TracePrintf(1, "got %s\n", buf2);
+//    TracePrintf(1, "size of message_stat %d\n", sizeof(struct message_stat));
     return (0);
 }

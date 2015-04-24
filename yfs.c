@@ -327,7 +327,8 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     //get the inode number for the first file in path 
     // ex: if path is "/a/b/c.txt" get the indoe # for "a"
     int nextInodeNumber = 0;
-    TracePrintf(2, "inodeStartNumber = %d\n", inodeStartNumber);
+
+    TracePrintf(1, "inodeStartNumber = %d path = %s\n", inodeStartNumber, path);
     //Get inode corresponding to inodeStartNumber
     void *block = getBlockForInode(inodeStartNumber);
     struct inode *inode = getInode(inodeStartNumber);
@@ -340,6 +341,7 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
             block = getBlock(blockNum);
             struct dir_entry * dir_entry = (struct dir_entry *) ((char *) block + offset);
             nextInodeNumber = dir_entry->inum;
+            TracePrintf(1, "dir_entry name = %s\n", dir_entry->name);
         }
     } else if (inode->type == INODE_REGULAR) {
         return 0;
@@ -349,14 +351,13 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
     char *nextPath = path;
     if (nextInodeNumber == 0) {
         // Return error
-        TracePrintf(2, "could not find pathname %s\n", path);
         return 0;
     }
     while (nextPath[0] != '/') {
         // base case
         if (nextPath[0] == '\0') {
             inode = getInode(nextInodeNumber);
-            
+            //TracePrintf(1, "are we a symlink?\n");
             if (inode->type != INODE_SYMLINK) {
                 return nextInodeNumber;
             }
@@ -367,13 +368,13 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
         }
         nextPath += sizeof (char);
     }
-    while (nextPath[1] == '/') {
-        TracePrintf(1, "next path = %s\n", nextPath);
+    while (nextPath[0] == '/') {
         nextPath += sizeof (char);
-        TracePrintf(1, "next path = %s\n", nextPath);
     }
-    nextPath += sizeof (char);
-    TracePrintf(1, "done looping\n");
+    if (nextPath[0] == '\0') {
+        return nextInodeNumber;
+    }
+    //nextPath += sizeof (char);
     inode = getInode(nextInodeNumber);
     if (inode->type == INODE_SYMLINK) {
         numSymLinks++;
@@ -387,9 +388,14 @@ getInodeNumberForPath(char *path, int inodeStartNumber)
             inodeStartNumber = ROOTINODE;
         }
         nextInodeNumber = getInodeNumberForPath(dataBlock, inodeStartNumber);
-        if (nextPath[0] == '\0') {
-            return nextInodeNumber;
+        while (nextPath[0] != '/') {
+            if (nextPath[0] == '\0') {
+                return nextInodeNumber;
+            }
+            nextPath += sizeof (char);
         }
+        while (nextPath[0] == '/')
+            nextPath += sizeof(char);        
     }
     return getInodeNumberForPath(nextPath, nextInodeNumber);
 }
@@ -544,7 +550,6 @@ getDirectoryEntry(char *pathname, int inodeStartNumber, int *blockNumPtr, bool c
                 freeEntryOffset = (int)((char *)currentEntry - (char *)currentBlock);
             }
             //check the currentEntry fileName to see if it matches
-            TracePrintf(2, "looking at name %s\n", currentEntry->name);
             if (isEqual(pathname, currentEntry->name)) {
                 isFound = true;
                 break;
@@ -629,7 +634,6 @@ getContainingDirectory(char *pathname, int currentInode, char **filenamePtr) {
         i++;
     }
     
-    TracePrintf(1, "returning current inode %d lastslash at %d\n", currentInode, lastSlashIndex);
     if (lastSlashIndex != 0) {
         char path[lastSlashIndex + 1];
         for (i = 0; i < lastSlashIndex; i++) {
@@ -875,7 +879,6 @@ yfsLink(char *oldName, char *newName, int currentInode) {
         return ERROR;
     }
     inode->nlink++;
-    TracePrintf(1, "just linked, new inode nlink count is: %d\n", inode->nlink);
     saveInode(oldNameNodeNum);
     
     return 0;
@@ -886,6 +889,7 @@ yfsUnlink(char *pathname, int currentInode) {
     if (pathname == NULL || currentInode <= 0) {
         return ERROR;
     }
+    
     // Get the containind directory 
     char *filename;
     int dirInodeNum = getContainingDirectory(pathname, currentInode, &filename);
@@ -906,7 +910,6 @@ yfsUnlink(char *pathname, int currentInode) {
     
     // If nlinks == 0, clear the file
     if (inode->nlink == 0) {
-        TracePrintf(1, "about to clear the file!\n");
         clearFile(inode, inodeNum);
     } 
     
@@ -921,6 +924,12 @@ yfsUnlink(char *pathname, int currentInode) {
 
 int
 yfsSymLink(char *oldname, char *newname, int currentInode) {
+    
+    if (newname[0] == '/') {
+        newname += sizeof(char);
+        currentInode = ROOTINODE;
+    }
+    
     if (oldname == NULL || newname == NULL || currentInode <= 0) {
         return ERROR;
     }
@@ -946,10 +955,8 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
     // create a directory for newname
     char *filename;
     int dirInodeNum = getContainingDirectory(newname, currentInode, &filename);
-    TracePrintf(1, "dirInodeNum = %d\n", dirInodeNum);
     // Search all directory entries of that inode for the file name to create
     int blockNum;
-    TracePrintf(1, "filename = %s\n", filename);
     int offset = getDirectoryEntry(filename, dirInodeNum, &blockNum, true);
     void *block = getBlock(blockNum);
     
@@ -957,15 +964,13 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
     
     // link that inode to newname
     int inodeNum = getNextFreeInodeNum();
-    TracePrintf(1, "creating new inode for filename: %s, %d\n", filename, inodeNum);
     dir_entry->inum = inodeNum;
-    memset(&dir_entry->name, '\0', MAXPATHNAMELEN);
+    memset(dir_entry->name, '\0', MAXPATHNAMELEN);
 
     for (i = 0; filename[i] != '\0'; i++) {
         dir_entry->name[i] = filename[i];
     };
     saveBlock(blockNum);
-    block = getBlockForInode(inodeNum);
     struct inode *inode = getInode(inodeNum);
     inode->type = INODE_SYMLINK;
     inode->size = sizeof(char) * strlen(oldname);
@@ -976,7 +981,6 @@ yfsSymLink(char *oldname, char *newname, int currentInode) {
     memcpy(dataBlock, oldname, strlen(oldname));
     
     saveBlock(inode->direct[0]);
-    
     saveInode(inodeNum);
     return 0;
 }

@@ -986,6 +986,8 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode, int pid) {
     if (pathname == NULL || buf == NULL || len < 0 || currentInode <= 0) {
         return ERROR;
     }
+    TracePrintf(1, "read link for %s, len %d, at inode %d, from pid %d\n",
+        pathname, len, currentInode, pid);
     if (pathname[0] == '/') {
         while (pathname[0] == '/')
             pathname += sizeof(char);
@@ -1000,12 +1002,14 @@ yfsReadLink(char *pathname, char *buf, int len, int currentInode, int pid) {
     
     int dataBlockNum = symInode->direct[0];
     char *dataBlock = (char *)getBlock(dataBlockNum);
+    TracePrintf(1, "data block has string -> %s\n", dataBlock);
     
     int charsToRead = 0;
     while (charsToRead < len && dataBlock[charsToRead] != '\0') {
         charsToRead++;
     }
     
+    TracePrintf(1, "copying %d bytes from pid %d\n", charsToRead, pid);
     if (CopyTo(pid, buf, (char *)dataBlock, charsToRead) == ERROR)
     {
         TracePrintf(1, "error copying %d bytes from pid %d\n", charsToRead, pid);
@@ -1254,116 +1258,5 @@ main(int argc, char **argv)
         }
     }
     
-//    int i;
-//    char hello[612];
-//    for (i = 0; i < 612; i++) 
-//    {
-//        if (i % 2 == 0) {
-//            hello[i] = '2';
-//        } else {
-//            hello[i] = '1';
-//        }
-//    }
-//    hello[610] = 'a';
-//    hello[611] = 'b';
-//    
-    int result = yfsMkDir("/a", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsSymLink("d/e", "/a/b", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/a/d", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsSymLink("/f/g/h", "/a/d/e", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f/g", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f/g/h", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsMkDir("/f/g/h/j", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    result = yfsSymLink("j", "/f/g/h/c", ROOTINODE);
-    TracePrintf(2, "mkdir result = %d\n", result);
-    
-    numSymLinks = 0;
-    int inode1 = getInodeNumberForPath("f/g/h/j", ROOTINODE);
-    TracePrintf(2, "inode num of /f/g/h/j = %d\n", inode1);
-    
-    numSymLinks = 0;
-    int inode3 = getInodeNumberForPath("f", ROOTINODE);
-    TracePrintf(2, "f inode = %d\n", inode3);
-    numSymLinks = 0;
-    int inode2 = getInodeNumberForPath("a/b/c", ROOTINODE);
-    TracePrintf(2, "inode num of /a/b/c = %d\n", inode2);
-    
-    struct Stat *stat = malloc(sizeof(struct Stat));
-//    
-    int statresult = yfsStat("////a/////b", ROOTINODE, stat);
-    TracePrintf(1, "stat result = %d\n", statresult);
-    TracePrintf(1, "stat->inum = %d\n", stat->inum);
-    TracePrintf(1, "stat->nlink = %d\n", stat->nlink);
-    TracePrintf(1, "stat->size = %d\n", stat->size);
-    TracePrintf(1, "stat->type = %d\n", stat->type);
-    
-    
-    statresult = yfsStat("/f/g///h", ROOTINODE, stat);
-    TracePrintf(1, "stat result = %d\n", statresult);
-    TracePrintf(1, "h stat->inum = %d\n", stat->inum);
-    TracePrintf(1, "h stat->nlink = %d\n", stat->nlink);
-    TracePrintf(1, "h stat->size = %d\n", stat->size);
-    TracePrintf(1, "h stat->type = %d\n", stat->type);
-    
-    int seekresult = yfsSeek("/f/g/h", ROOTINODE, 0, SEEK_END, 50);
-    TracePrintf(1, "seek result = %d\n", seekresult);
-    
-    //yfsSync();
- //   yfsShutdown();
-    
-//    int inodeNum = getInodeNumberForPath("1", ROOTINODE);
-//    TracePrintf(1, "inodenum of 1 = %d\n", inodeNum);
-//    
-//    inodeNum = getInodeNumberForPath("1/2", ROOTINODE);
-//    TracePrintf(1, "inodenum of 1/2 = %d\n", inodeNum);
-//    
-//    inodeNum = getInodeNumberForPath("1/3", ROOTINODE);
-//    TracePrintf(1, "inodenum of 1/3 = %d\n", inodeNum);
-    
-    
-    
-//    char *writeMe = "abcdefghijklmnopqrstuvwxyz\n";
-//    int writeResult = yfsWrite(20, hello, 612, 0, 0);
-//    TracePrintf(1, "Bytes written = %d\n", writeResult);
-//    int writeResult2 = yfsWrite(20, writeMe, 26, 500, 0);
-//    TracePrintf(1, "Bytes written = %d\n", writeResult2);
-//    
-//    int linkResult = yfsLink("/a/b/x.txt", "/a/b/z.txt", ROOTINODE);
-//    TracePrintf(1, "Link result = %d\n", linkResult);
-//    
-//    int unlinkResult = yfsUnlink("/a/b/z.txt", ROOTINODE);
-//    TracePrintf(1, "unlink result = %d\n", unlinkResult);
-//    
-//    int ztxtInode = getInodeNumberForPath("a/b/z.txt", ROOTINODE);
-//    
-//    char *readMe = malloc(612*sizeof(char));
-//    int readResult = yfsRead(ztxtInode, readMe, 638, 0, 0);
-//    TracePrintf(1, "Bytes read = %d\n", readResult);
-//    TracePrintf(1, "String read = %s\n", readMe);
-//    
-//    int unlinkResult2 = yfsUnlink("/a/b/x.txt", ROOTINODE);
-//    TracePrintf(1, "unlink result = %d\n", unlinkResult2);
-//    
-//    char *readMe2 = malloc(612*sizeof(char));
-//    readResult = yfsRead(20, readMe2, 638, 0, 0);
-//    TracePrintf(1, "Bytes read = %d\n", readResult);
-//    TracePrintf(1, "String read = %s\n", readMe2);
     return (0);
 }

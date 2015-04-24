@@ -66,4 +66,21 @@ struct message_link {
     int new_len;
 };
 
+/*
+ * A message specific for the readLink operation
+ * 
+ * Granted, it's identically typed as message_link,
+ * but the variables represent different things.
+ * This makes the code more readable and less 
+ * error-prone.
+ */
+struct message_read_link {
+    int num;
+    int current_inode;
+    char *pathname;
+    char *buf;
+    int path_len;
+    int len;
+};
+
 void processRequest();

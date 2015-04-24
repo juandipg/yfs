@@ -43,16 +43,29 @@ processRequest()
     } else if (msg_rcv.num == YFS_SEEK) {
 
     } else if (msg_rcv.num == YFS_LINK) {
-
+        struct message_link * msg = (struct message_link *) &msg_rcv;
+        char *oldname = getPathFromProcess(pid, msg->old_name, msg->old_len);
+        char *newname = getPathFromProcess(pid, msg->new_name, msg->new_len);
+        return_value = yfsLink(oldname, newname, msg->current_inode);
+        free(oldname);
+        free(newname);
     } else if (msg_rcv.num == YFS_UNLINK) {
         struct message_path * msg = (struct message_path *) &msg_rcv;
         char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);
         return_value = yfsUnlink(pathname, msg->current_inode);
         free(pathname);
     } else if (msg_rcv.num == YFS_SYMLINK) {
-
+        struct message_link * msg = (struct message_link *) &msg_rcv;
+        char *oldname = getPathFromProcess(pid, msg->old_name, msg->old_len);
+        char *newname = getPathFromProcess(pid, msg->new_name, msg->new_len);
+        return_value = yfsSymLink(oldname, newname, msg->current_inode);
+        free(oldname);
+        free(newname);
     } else if (msg_rcv.num == YFS_READLINK) {
-
+        struct message_read_link * msg = (struct message_read_link *) &msg_rcv;
+        char *pathname = getPathFromProcess(pid, msg->pathname, msg->path_len);
+        return_value = yfsReadLink(pathname, msg->buf, msg->len, msg->current_inode, pid);
+        free(pathname);
     } else if (msg_rcv.num == YFS_MKDIR) {
         struct message_path * msg = (struct message_path *) &msg_rcv;
         char *pathname = getPathFromProcess(pid, msg->pathname, msg->len);

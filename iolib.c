@@ -131,6 +131,71 @@ sendFileMessage(int operation, int inodenum, void *buf, int size, int offset)
     return code;
 }
 
+static int
+sendLinkMessage(int operation, char *oldname, char *newname)
+{
+    int oldlen = getLenForPath(oldname);
+    if (oldlen == ERROR) {
+        return ERROR;
+    }
+    int newlen = getLenForPath(newname);
+    if (newlen == ERROR) {
+        return ERROR;
+    }
+    struct message_link * msg = malloc(sizeof(struct message_link));
+    if (msg == NULL) {
+        TracePrintf(1, "error allocating space for path message\n");
+        return ERROR;
+    }
+    msg->num = operation;
+    msg->current_inode = current_inode;
+    msg->old_name = oldname;
+    msg->new_name = newname;
+    msg->old_len = oldlen;
+    msg->new_len = newlen;
+    if (Send(msg, -FILE_SERVER) != 0) {
+        TracePrintf(1, "error sending message to server\n");
+        free(msg);
+        return ERROR;
+    }
+    // msg gets overwritten with reply message after return from Send
+    int code = msg->num;
+    free(msg);
+    return code;
+}
+
+static int
+sendReadLinkMessage(char *pathname, char *buf, int len)
+{
+    if (buf == NULL || len < 0) {
+        return ERROR;
+    }
+    int path_len = getLenForPath(pathname);
+    if (path_len == ERROR) {
+        return ERROR;
+    }
+    struct message_read_link * msg = malloc(sizeof(struct message_read_link));
+    if (msg == NULL) {
+        TracePrintf(1, "error allocating space for read link message\n");
+        return ERROR;
+    }
+    msg->num = YFS_READLINK;
+    msg->current_inode = current_inode;
+    msg->pathname = pathname;
+    msg->path_len = path_len;
+    msg->buf = buf;
+    msg->len = len;
+    if (Send(msg, -FILE_SERVER) != 0) {
+        TracePrintf(1, "error sending message to server\n");
+        free(msg);
+        return ERROR;
+    }
+    // msg gets overwritten with reply message after return from Send
+    int code = msg->num;
+    free(msg);
+    return code;
+}
+
 int
 Open(char *pathname)
 {
@@ -198,6 +263,7 @@ Write(int fd, void *buf, int size)
 int
 Seek(int fd, int offset, int whence)
 {
+    // TODO
     (void) fd;
     (void) offset;
     (void) whence;
@@ -207,9 +273,11 @@ Seek(int fd, int offset, int whence)
 int
 Link(char *oldname, char *newname)
 {
-    (void) oldname;
-    (void) newname;
-    return 0;
+    int code = sendLinkMessage(YFS_LINK, oldname, newname);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int
@@ -225,18 +293,21 @@ Unlink(char *pathname)
 int
 SymLink(char *oldname, char *newname)
 {
-    (void) oldname;
-    (void) newname;
-    return 0;
+    int code = sendLinkMessage(YFS_SYMLINK, oldname, newname);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int
 ReadLink(char *pathname, char *buf, int len)
 {
-    (void) pathname;
-    (void) buf;
-    (void) len;
-    return 0;
+    int code = sendReadLinkMessage(pathname, buf, len);
+    if (code == ERROR) {
+        TracePrintf(1, "received error from server\n");
+    }
+    return code;
 }
 
 int
@@ -274,6 +345,7 @@ ChDir(char *pathname)
 int
 Stat(char *pathname, struct Stat *statbuf)
 {
+    // TODO
     (void) pathname;
     (void) statbuf;
     return 0;
@@ -282,11 +354,13 @@ Stat(char *pathname, struct Stat *statbuf)
 int
 Sync()
 {
+    // TODO
     return 0;
 }
 
 int
 Shutdown()
 {
+    // TODO
     return 0;
 }
